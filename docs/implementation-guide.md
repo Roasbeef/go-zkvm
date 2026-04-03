@@ -79,11 +79,16 @@ The host is where we:
 
 - keep the witness private
 - choose between execute-only and prove mode
-- compute or pin the expected image ID
+- compute or pin the expected image ID for the exact built guest artifact
 - verify the receipt with the same risc0 stack others will use
 
 For the BIP-32/Taproot demo, this is the layer that writes the private seed and
 path into guest stdin and verifies the resulting receipt locally.
+
+Today, that “exact built artifact” wording matters: the linked
+`zkvm-platform` archive still leaves absolute build paths in the guest ELF, so
+rebuilding the same source tree in a different directory can change the image
+ID even when the public journal output is identical.
 
 ## Journal Finalization
 

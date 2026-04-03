@@ -94,6 +94,10 @@ The host will:
 
 - On Apple Silicon, local release proving should take the Metal-backed path by
   default.
+- The image ID is tied to the exact built guest artifact. In the current lane,
+  absolute build paths from the linked `zkvm-platform` archive are still
+  embedded in the guest ELF, so rebuilding the same source tree in a different
+  directory can change the image ID even when the journal output stays the same.
 - If you are debugging basic guest behavior, use `--execute-only` first.
 - The packed kernel half must come from the same current risc0 lane as the
   archive and host crates.
