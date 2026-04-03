@@ -1,0 +1,8 @@
+[package]
+name = "go-guest-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+risc0-zkvm = { path = "../../risc0/risc0/zkvm", default-features = false, features = ["prove"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
