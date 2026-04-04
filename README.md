@@ -21,9 +21,37 @@ The working path in this repo is the current upstream-aligned lane:
 - Go guests execute, prove, and verify locally
 - Apple Silicon proving is confirmed to use the Metal-backed prover path
 
-The older handwritten syscall path is still documented because it explains the
-constraints of non-Rust guests, but it is not the recommended integration model
-anymore.
+Historical notes on the older handwritten syscall path still exist in `docs/`,
+but the supported user-facing flow in this repo is the archive-linked one.
+
+## Supported Sample Set
+
+The current validated sample set is:
+
+- `simple`
+  - execute-only: verified
+  - prove+verify: verified
+  - current sibling-layout image ID: `9ac42ea490374af40aa6ca499952a133edb38df51a314b47041bf06576494f2e`
+  - current proof seal size: `203016` bytes
+- `multiply`
+  - prove+verify: verified
+  - current sibling-layout image ID: `db8cb4b1a0a6045cc3e64f1eb6f2927eadd73f33bbceb261b91da1b3068e10f2`
+  - committed public output: `391`
+  - current proof seal size: `203016` bytes
+- `policy_check`
+  - execute-only: verified
+  - prove+verify: verified
+  - current sibling-layout image ID: `78e9677b5db05ea0a2a5de33c54f85d5ba1724364f8f73c150949066753144ac`
+  - current proof seal size: `203016` bytes
+  - built-in public summary:
+    - item count `3`
+    - approved `true`
+    - subtotal `245`
+    - discount `20`
+    - total `225`
+    - limit `250`
+- `platform_smoke`
+  - builds, but is not part of the supported end-to-end sample set
 
 ## Repo Contents
 
@@ -110,6 +138,12 @@ make policy-check
 These targets compile with TinyGo target `zkvm-platform`, link against
 `libzkvm_platform.a`, and package the final `.bin` guest image.
 
+To rebuild and run the currently supported sample set end to end:
+
+```bash
+make verify-samples
+```
+
 ### Execute Without Proving
 
 From `go-guest-host/`:
@@ -127,7 +161,7 @@ cargo run --release -- ../simple.bin --raw-journal
 ```
 
 The host computes the image ID, runs the local prover, verifies the receipt,
-and prints the committed journal bytes.
+and prints the committed journal bytes plus the receipt proof seal size.
 
 ## Multiply Example
 
@@ -159,6 +193,12 @@ That is the core model for Go guests:
 2. compute inside the guest
 3. commit only the public claim material
 4. halt with the final output digest
+
+Prove it from `go-guest-host/` with:
+
+```bash
+cargo run --release -- ../multiply.bin
+```
 
 ## Policy Check Example
 

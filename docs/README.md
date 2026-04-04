@@ -23,7 +23,8 @@ Most of the repo is now organized around the second model.
 6. `journal-digest.md`
    - why journal output needs a final output digest and how the Go guest does it
 7. `running.md`
-   - practical build, execute, and prove commands
+   - practical build, execute, and prove commands, plus the current validated
+     sample outputs
 
 ## Topic Map
 

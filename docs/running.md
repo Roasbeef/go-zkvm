@@ -67,6 +67,12 @@ Each target does three things:
 2. links the guest against `libzkvm_platform.a`
 3. packages the ELF with `v1compat.elf`
 
+To rebuild and validate the currently supported sample set in one pass:
+
+```bash
+make verify-samples
+```
+
 ## Execute Without Proving
 
 From `go-guest-host/`:
@@ -89,6 +95,13 @@ The host will:
 - run the local prover
 - verify the receipt
 - print the committed journal bytes
+- print the receipt proof seal size
+
+For the smallest public-output sample, prove `multiply` with:
+
+```bash
+cargo run --release -- ../multiply.bin
+```
 
 ## Richer Example
 
@@ -123,6 +136,31 @@ The guest commits this public summary:
 - discount
 - total
 - limit
+
+## Current Validated Sample Outputs
+
+These values come from the current sibling-layout verification pass. Treat the
+image IDs as artifact-specific rather than universal constants.
+
+- `simple`
+  - image ID: `9ac42ea490374af40aa6ca499952a133edb38df51a314b47041bf06576494f2e`
+  - raw journal: empty
+  - proof seal size: `203016` bytes
+- `multiply`
+  - image ID: `db8cb4b1a0a6045cc3e64f1eb6f2927eadd73f33bbceb261b91da1b3068e10f2`
+  - public output: `391`
+  - proof seal size: `203016` bytes
+- `policy_check`
+  - image ID: `78e9677b5db05ea0a2a5de33c54f85d5ba1724364f8f73c150949066753144ac`
+  - raw journal: `0300000001000000f5000000000000001400000000000000e100000000000000fa00000000000000`
+  - decoded summary:
+    - item count `3`
+    - approved `true`
+    - subtotal `245`
+    - discount `20`
+    - total `225`
+    - limit `250`
+  - proof seal size: `203016` bytes
 
 ## Experimental Low-Level Smoke
 
