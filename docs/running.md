@@ -162,13 +162,6 @@ image IDs as artifact-specific rather than universal constants.
     - limit `250`
   - proof seal size: `203016` bytes
 
-## Experimental Low-Level Smoke
-
-`platform_smoke` is intentionally not part of the default sample set.
-
-It remains in the repo as a low-level CGo/platform experiment, but it is not
-currently the supported end-to-end path for consumers of `go-zkvm`.
-
 ## Notes
 
 - On Apple Silicon, local release proving should take the Metal-backed path by

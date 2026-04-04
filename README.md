@@ -50,8 +50,6 @@ The current validated sample set is:
     - discount `20`
     - total `225`
     - limit `250`
-- `platform_smoke`
-  - builds, but is not part of the supported end-to-end sample set
 
 ## Repo Contents
 
@@ -65,9 +63,6 @@ The current validated sample set is:
 - `policy_check/`
   - richer structured-witness example that feeds multiple private values from
     the Rust host and commits a small public policy summary
-- `platform_smoke/`
-  - experimental low-level CGo bridge test; currently not part of the supported
-    end-to-end sample set
 - `go-guest-host/`
   - Rust host that loads `.bin` guests, writes private witness data, and
     executes or proves them
@@ -236,13 +231,6 @@ You can also override the built-in witness from the host with:
 - `--policy-items=120,45,80`
 - `--policy-discount=20`
 - `--policy-limit=250`
-
-## Experimental Low-Level Smoke
-
-`platform_smoke` is kept only as a low-level CGo/archive integration scratch
-test. It still builds, but it is not currently part of the supported example
-set and should not be treated as the reference path for users building Go
-guests.
 
 ## What Had To Change In TinyGo
 
