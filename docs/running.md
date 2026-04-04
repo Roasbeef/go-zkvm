@@ -167,9 +167,11 @@ image IDs as artifact-specific rather than universal constants.
 - On Apple Silicon, local release proving should take the Metal-backed path by
   default.
 - The image ID is tied to the exact built guest artifact. In the current lane,
-  absolute build paths from the linked `zkvm-platform` archive are still
-  embedded in the guest ELF, so rebuilding the same source tree in a different
-  directory can change the image ID even when the journal output stays the same.
+  moving only the Go guest repo checkout path did not change the image ID when
+  the same sibling `risc0`, `tinygo-zkvm`, and `go-zkvm` trees were reused.
+- The remaining drift is specifically in the linked `libzkvm_platform.a` build:
+  rebuilding `risc0/examples/c-guest` from a different checkout path still
+  changes the image ID even when the committed journal output stays the same.
 - If you are debugging basic guest behavior, use `--execute-only` first.
 - The packed kernel half must come from the same current risc0 lane as the
   archive and host crates.
