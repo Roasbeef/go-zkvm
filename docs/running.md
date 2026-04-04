@@ -16,6 +16,11 @@ github.com/roasbeef/
 - a built TinyGo fork in `../tinygo-zkvm`
 - a built risc0 platform archive in `../risc0/examples/c-guest`
 
+Fresh-clone setup notes:
+
+- in `../tinygo-zkvm`, run `git submodule update --init --recursive`
+- in `../risc0`, run `git lfs pull` before building the Rust host/prover path
+
 If your shell default is a newer Go release, export the GOROOT TinyGo should
 use:
 

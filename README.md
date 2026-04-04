@@ -112,6 +112,11 @@ That is the path that produced the current working local proofs.
 - on Apple Silicon, a working local Metal environment is recommended for proof
   speed
 
+Fresh-clone notes:
+
+- in `../tinygo-zkvm`, run `git submodule update --init --recursive`
+- in `../risc0`, run `git lfs pull` before the Rust host/prover build
+
 If your default `go` in `PATH` is newer than TinyGo currently supports on this
 lane, set:
 
