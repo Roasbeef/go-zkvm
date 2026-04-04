@@ -41,7 +41,7 @@ That is the concrete local recipe used on the current Apple Silicon lane.
 From `risc0/examples/c-guest/`:
 
 ```bash
-make platform
+make platform-standalone
 ```
 
 That produces:
@@ -50,12 +50,18 @@ That produces:
 examples/c-guest/guest/out/platform/riscv32im-risc0-zkvm-elf/release/libzkvm_platform.a
 ```
 
+`platform-standalone` is the preferred path now. It builds the archive through
+a temporary standalone Cargo package pinned to the published risc0 git commit,
+which avoids the checkout-path sensitivity seen in the older workspace-local
+`make platform` flow.
+
 ## Build Sample Guests
 
 From the `go-zkvm` repo root:
 
 ```bash
 export GO_GOROOT=/path/to/go1.24.4
+make platform-standalone
 make simple
 make multiply
 make policy-check
@@ -166,12 +172,14 @@ image IDs as artifact-specific rather than universal constants.
 
 - On Apple Silicon, local release proving should take the Metal-backed path by
   default.
+- If you want deterministic guest artifacts across different `risc0` checkout
+  paths, build the archive with `make platform-standalone` first.
 - The image ID is tied to the exact built guest artifact. In the current lane,
   moving only the Go guest repo checkout path did not change the image ID when
   the same sibling `risc0`, `tinygo-zkvm`, and `go-zkvm` trees were reused.
-- The remaining drift is specifically in the linked `libzkvm_platform.a` build:
-  rebuilding `risc0/examples/c-guest` from a different checkout path still
-  changes the image ID even when the committed journal output stays the same.
+- The older `make platform` path is still useful for local iteration, but it is
+  the flow that previously showed checkout-path sensitivity in
+  `libzkvm_platform.a`.
 - If you are debugging basic guest behavior, use `--execute-only` first.
 - The packed kernel half must come from the same current risc0 lane as the
   archive and host crates.

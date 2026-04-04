@@ -9,9 +9,12 @@ KERNEL ?= $(RISC0_DIR)/risc0/zkos/v1compat/elfs/v1compat.elf
 CONVERT := $(GO) run ./convert_to_r0bf.go
 GO_GUEST_HOST_DIR ?= $(CURDIR)/go-guest-host
 
-.PHONY: all check-tools clean simple multiply policy-check verify-samples
+.PHONY: all check-tools clean platform-standalone simple multiply policy-check verify-samples
 
 all: simple multiply policy-check
+
+platform-standalone:
+	$(MAKE) -C $(RISC0_DIR)/examples/c-guest platform-standalone
 
 check-tools:
 	@test -x "$(TINYGO_BIN)" || (echo "missing TinyGo binary: $(TINYGO_BIN)" && exit 1)

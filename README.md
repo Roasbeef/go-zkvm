@@ -93,6 +93,7 @@ The recommended build path is:
 
 1. build the TinyGo fork with the zkVM target support
 2. build the risc0 platform archive from `examples/c-guest`
+   use `make platform-standalone` for the deterministic published-commit path
 3. compile the Go guest with TinyGo target `zkvm-platform`
 4. pack the guest ELF with `v1compat.elf`
 5. execute or prove it with the Rust host harness
@@ -125,6 +126,7 @@ before running `make`.
 From the repo root:
 
 ```bash
+make platform-standalone
 make simple
 make multiply
 make policy-check
@@ -132,6 +134,11 @@ make policy-check
 
 These targets compile with TinyGo target `zkvm-platform`, link against
 `libzkvm_platform.a`, and package the final `.bin` guest image.
+
+`make platform-standalone` proxies to the sibling `risc0/examples/c-guest`
+target that builds a deterministic platform archive from the published git
+commit. That is now the preferred path when you want stable guest artifacts
+across different `risc0` checkout directories.
 
 To rebuild and run the currently supported sample set end to end:
 
