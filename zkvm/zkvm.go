@@ -11,7 +11,6 @@ void sys_write(uint32_t fd, char* buf, int len);
 void sys_halt(uint8_t exit_code, uint32_t* out_state);
 void sys_read(uint32_t fd, void* buf, uint32_t len);
 uint64_t sys_cycle_count();
-void sys_sha_buffer(uint32_t* out_state, uint32_t* in_state, uint8_t* buf, uint32_t count);
 */
 import "C"
 import (
