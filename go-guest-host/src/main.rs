@@ -467,6 +467,7 @@ fn run() {
 
     println!("Receipt info:");
     println!("  Journal size: {} bytes", receipt.journal.bytes.len());
+    println!("  Proof seal size: {} bytes", receipt.seal_size());
     println!("\n✅ Go guest prove+verify PASSED!");
 }
 
