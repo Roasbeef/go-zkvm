@@ -8,9 +8,9 @@ PLATFORM_LIB ?= $(RISC0_DIR)/examples/c-guest/guest/out/platform/riscv32im-risc0
 KERNEL ?= $(RISC0_DIR)/risc0/zkos/v1compat/elfs/v1compat.elf
 CONVERT := $(GO) run ./convert_to_r0bf.go
 
-.PHONY: all check-tools clean simple multiply platform-smoke
+.PHONY: all check-tools clean simple multiply policy-check platform-smoke
 
-all: simple multiply platform-smoke
+all: simple multiply policy-check
 
 check-tools:
 	@test -x "$(TINYGO_BIN)" || (echo "missing TinyGo binary: $(TINYGO_BIN)" && exit 1)
@@ -26,6 +26,11 @@ multiply: check-tools
 	PATH=$(GO_GOROOT)/bin:$$PATH GOROOT=$(GO_GOROOT) $(TINYGO_BIN) build -target=zkvm-platform -scheduler=none -no-debug -ldflags='-extldflags=$(PLATFORM_LIB)' -o multiply.elf ./multiply
 	$(CONVERT) multiply.elf $(KERNEL) multiply.bin
 	@echo "Built multiply.bin"
+
+policy-check: check-tools
+	PATH=$(GO_GOROOT)/bin:$$PATH GOROOT=$(GO_GOROOT) $(TINYGO_BIN) build -target=zkvm-platform -scheduler=none -no-debug -ldflags='-extldflags=$(PLATFORM_LIB)' -o policy_check.elf ./policy_check
+	$(CONVERT) policy_check.elf $(KERNEL) policy_check.bin
+	@echo "Built policy_check.bin"
 
 platform-smoke: check-tools
 	PATH=$(GO_GOROOT)/bin:$$PATH GOROOT=$(GO_GOROOT) $(TINYGO_BIN) build -target=zkvm-platform -scheduler=none -no-debug -ldflags='-extldflags=$(PLATFORM_LIB)' -o platform_smoke.elf ./platform_smoke

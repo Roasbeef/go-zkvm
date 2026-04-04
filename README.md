@@ -34,8 +34,12 @@ anymore.
   - smallest “hello world” guest
 - `multiply/`
   - minimal witness-in, public-result-out example
+- `policy_check/`
+  - richer structured-witness example that feeds multiple private values from
+    the Rust host and commits a small public policy summary
 - `platform_smoke/`
-  - low-level smoke test for the platform archive integration
+  - experimental low-level CGo bridge test; currently not part of the supported
+    end-to-end sample set
 - `go-guest-host/`
   - Rust host that loads `.bin` guests, writes private witness data, and
     executes or proves them
@@ -100,7 +104,7 @@ From the repo root:
 ```bash
 make simple
 make multiply
-make platform-smoke
+make policy-check
 ```
 
 These targets compile with TinyGo target `zkvm-platform`, link against
@@ -155,6 +159,50 @@ That is the core model for Go guests:
 2. compute inside the guest
 3. commit only the public claim material
 4. halt with the final output digest
+
+## Policy Check Example
+
+`policy_check` is the more complete “how the pieces fit together” sample in
+this repo. The Rust host writes:
+
+- a private item count
+- a private list of item values
+- a private discount
+- a private approval limit
+
+The guest:
+
+- validates the witness
+- computes a subtotal and final total
+- derives a public approval bit
+- commits a compact public summary only
+
+Run it with the built-in sample witness:
+
+```bash
+make policy-check
+cd go-guest-host
+cargo run --release -- ../policy_check.bin --raw-journal --execute-only
+```
+
+or prove it:
+
+```bash
+cargo run --release -- ../policy_check.bin --raw-journal
+```
+
+You can also override the built-in witness from the host with:
+
+- `--policy-items=120,45,80`
+- `--policy-discount=20`
+- `--policy-limit=250`
+
+## Experimental Low-Level Smoke
+
+`platform_smoke` is kept only as a low-level CGo/archive integration scratch
+test. It still builds, but it is not currently part of the supported example
+set and should not be treated as the reference path for users building Go
+guests.
 
 ## What Had To Change In TinyGo
 

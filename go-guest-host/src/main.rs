@@ -15,6 +15,10 @@ const DEFAULT_BIP32_PATH: [u32; 5] = [
     0,
     0,
 ];
+const DEFAULT_POLICY_ITEMS: [u64; 3] = [120, 45, 80];
+const DEFAULT_POLICY_DISCOUNT: u64 = 20;
+const DEFAULT_POLICY_LIMIT: u64 = 250;
+const POLICY_SUMMARY_LEN: usize = 40;
 
 fn hex(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() * 2);
@@ -46,6 +50,22 @@ fn decode_hex(hex_str: &str) -> Result<Vec<u8>, String> {
     }
 
     Ok(out)
+}
+
+fn parse_u64_csv(spec: &str) -> Result<Vec<u64>, String> {
+    let trimmed = spec.trim();
+    if trimmed.is_empty() {
+        return Err("csv input must not be empty".to_string());
+    }
+
+    trimmed
+        .split(',')
+        .map(|value| {
+            let item = value.trim();
+            item.parse::<u64>()
+                .map_err(|_| format!("invalid u64 value `{item}`"))
+        })
+        .collect()
 }
 
 fn parse_bip32_path(path: &str) -> Result<Vec<u32>, String> {
@@ -105,6 +125,26 @@ fn validate_bip86_path(path: &[u32]) -> Result<(), String> {
     Ok(())
 }
 
+fn load_policy_witness(
+    items_spec: Option<&str>,
+    discount: Option<u64>,
+    limit: Option<u64>,
+) -> (Vec<u64>, u64, u64, bool) {
+    let using_defaults = items_spec.is_none() && discount.is_none() && limit.is_none();
+
+    let items = match items_spec {
+        Some(spec) => parse_u64_csv(spec).expect("invalid --policy-items value"),
+        None => DEFAULT_POLICY_ITEMS.to_vec(),
+    };
+
+    assert!(!items.is_empty(), "policy guest requires at least one item");
+
+    let discount = discount.unwrap_or(DEFAULT_POLICY_DISCOUNT);
+    let limit = limit.unwrap_or(DEFAULT_POLICY_LIMIT);
+
+    (items, discount, limit, using_defaults)
+}
+
 fn load_bip32_witness(
     seed_hex: Option<&str>,
     path_spec: Option<&str>,
@@ -122,7 +162,11 @@ fn load_bip32_witness(
             parse_bip32_path(path_spec).expect("invalid --path value"),
             false,
         ),
-        (None, None, true) => (DEFAULT_BIP32_SEED.to_vec(), DEFAULT_BIP32_PATH.to_vec(), true),
+        (None, None, true) => (
+            DEFAULT_BIP32_SEED.to_vec(),
+            DEFAULT_BIP32_PATH.to_vec(),
+            true,
+        ),
         (None, None, false) => {
             panic!("bip32 guest requires --seed-hex and --path, or --use-test-vector")
         }
@@ -144,6 +188,51 @@ fn is_bip32_guest(guest_path: &str) -> bool {
     guest_path.contains("bip32")
 }
 
+fn is_policy_guest(guest_path: &str) -> bool {
+    guest_path.contains("policy_check")
+}
+
+fn decode_u32_le(bytes: &[u8], offset: usize) -> Result<u32, String> {
+    let slice = bytes
+        .get(offset..offset + 4)
+        .ok_or_else(|| format!("journal too short to read u32 at offset {offset}"))?;
+    let mut buf = [0_u8; 4];
+    buf.copy_from_slice(slice);
+    Ok(u32::from_le_bytes(buf))
+}
+
+fn decode_u64_le(bytes: &[u8], offset: usize) -> Result<u64, String> {
+    let slice = bytes
+        .get(offset..offset + 8)
+        .ok_or_else(|| format!("journal too short to read u64 at offset {offset}"))?;
+    let mut buf = [0_u8; 8];
+    buf.copy_from_slice(slice);
+    Ok(u64::from_le_bytes(buf))
+}
+
+fn print_policy_summary(bytes: &[u8]) {
+    assert_eq!(
+        bytes.len(),
+        POLICY_SUMMARY_LEN,
+        "policy summary journal must be {POLICY_SUMMARY_LEN} bytes"
+    );
+
+    let item_count = decode_u32_le(bytes, 0).expect("invalid item_count");
+    let approved = decode_u32_le(bytes, 4).expect("invalid approved flag") != 0;
+    let subtotal = decode_u64_le(bytes, 8).expect("invalid subtotal");
+    let discount = decode_u64_le(bytes, 16).expect("invalid discount");
+    let total = decode_u64_le(bytes, 24).expect("invalid total");
+    let limit = decode_u64_le(bytes, 32).expect("invalid limit");
+
+    println!("✓ Policy summary:");
+    println!("  Item count: {}", item_count);
+    println!("  Approved: {}", approved);
+    println!("  Subtotal: {}", subtotal);
+    println!("  Discount: {}", discount);
+    println!("  Total: {}", total);
+    println!("  Limit: {}", limit);
+}
+
 fn run() {
     let mut guest_path = String::from("../multiply.bin");
     let mut raw_journal = false;
@@ -152,6 +241,9 @@ fn run() {
     let mut path_spec: Option<String> = None;
     let mut use_test_vector = false;
     let mut require_bip86 = false;
+    let mut policy_items: Option<String> = None;
+    let mut policy_discount: Option<u64> = None;
+    let mut policy_limit: Option<u64> = None;
 
     let args: Vec<String> = env::args().skip(1).collect();
     let mut index = 0;
@@ -164,7 +256,7 @@ fn run() {
             "--require-bip86" => require_bip86 = true,
             "--help" | "-h" => {
                 println!(
-                    "usage: cargo run -- [guest.bin] [--raw-journal] [--execute-only] [--seed-hex HEX --path PATH | --use-test-vector] [--require-bip86]"
+                    "usage: cargo run -- [guest.bin] [--raw-journal] [--execute-only] [--seed-hex HEX --path PATH | --use-test-vector] [--require-bip86] [--policy-items CSV] [--policy-discount N] [--policy-limit N]"
                 );
                 return;
             }
@@ -180,11 +272,54 @@ fn run() {
                 index += 1;
                 path_spec = Some(args.get(index).cloned().expect("--path requires a value"));
             }
+            "--policy-items" => {
+                index += 1;
+                policy_items = Some(
+                    args.get(index)
+                        .cloned()
+                        .expect("--policy-items requires a value"),
+                );
+            }
+            "--policy-discount" => {
+                index += 1;
+                policy_discount = Some(
+                    args.get(index)
+                        .expect("--policy-discount requires a value")
+                        .parse::<u64>()
+                        .expect("invalid --policy-discount value"),
+                );
+            }
+            "--policy-limit" => {
+                index += 1;
+                policy_limit = Some(
+                    args.get(index)
+                        .expect("--policy-limit requires a value")
+                        .parse::<u64>()
+                        .expect("invalid --policy-limit value"),
+                );
+            }
             _ if arg.starts_with("--seed-hex=") => {
                 seed_hex = Some(arg["--seed-hex=".len()..].to_string());
             }
             _ if arg.starts_with("--path=") => {
                 path_spec = Some(arg["--path=".len()..].to_string());
+            }
+            _ if arg.starts_with("--policy-items=") => {
+                policy_items = Some(arg["--policy-items=".len()..].to_string());
+            }
+            _ if arg.starts_with("--policy-discount=") => {
+                policy_discount = Some(
+                    arg["--policy-discount=".len()..]
+                        .parse::<u64>()
+                        .expect("invalid --policy-discount value"),
+                );
+            }
+            _ if arg.starts_with("--policy-limit=") => {
+                policy_limit = Some(
+                    arg["--policy-limit=".len()..]
+                        .parse::<u64>()
+                        .expect("invalid --policy-limit value"),
+                );
             }
             _ => guest_path = arg.clone(),
         }
@@ -207,7 +342,8 @@ fn run() {
     );
     println!("✓ Image ID: {}", image_id);
 
-    let env = if raw_journal && is_bip32_guest(&guest_path) {
+    let env = if is_bip32_guest(&guest_path) {
+        assert!(raw_journal, "bip32 guest requires --raw-journal");
         let (seed, path, witness_flags, using_test_vector) = load_bip32_witness(
             seed_hex.as_deref(),
             path_spec.as_deref(),
@@ -232,6 +368,24 @@ fn run() {
             .write_slice(seed.as_slice())
             .write_slice(&[path.len() as u32])
             .write_slice(path.as_slice())
+            .build()
+            .unwrap()
+    } else if is_policy_guest(&guest_path) {
+        let (items, discount, limit, using_defaults) =
+            load_policy_witness(policy_items.as_deref(), policy_discount, policy_limit);
+        let item_count = items.len() as u32;
+
+        if using_defaults {
+            println!("✓ Sending private policy witness (built-in sample)");
+        } else {
+            println!("✓ Sending private policy witness");
+        }
+
+        ExecutorEnv::builder()
+            .write_slice(&[item_count])
+            .write_slice(items.as_slice())
+            .write_slice(&[discount])
+            .write_slice(&[limit])
             .build()
             .unwrap()
     } else if raw_journal {
@@ -259,7 +413,12 @@ fn run() {
         let session = exec.execute(env, &guest_binary).expect("Execution failed");
         println!("✓ Execution successful!");
 
-        if raw_journal {
+        if is_policy_guest(&guest_path) {
+            if raw_journal {
+                println!("✓ Raw journal hex: {}", hex(&session.journal.bytes));
+            }
+            print_policy_summary(&session.journal.bytes);
+        } else if raw_journal {
             println!("✓ Raw journal hex: {}", hex(&session.journal.bytes));
         } else {
             eprintln!(
@@ -288,7 +447,12 @@ fn run() {
         .expect("Receipt verification failed");
     println!("✓ Receipt verified against image ID");
 
-    if raw_journal {
+    if is_policy_guest(&guest_path) {
+        if raw_journal {
+            println!("✓ Raw journal hex: {}", hex(&receipt.journal.bytes));
+        }
+        print_policy_summary(&receipt.journal.bytes);
+    } else if raw_journal {
         println!("✓ Raw journal hex: {}", hex(&receipt.journal.bytes));
     } else {
         let product: u64 = receipt

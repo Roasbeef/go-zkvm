@@ -58,7 +58,7 @@ From the `go-zkvm` repo root:
 export GO_GOROOT=/path/to/go1.24.4
 make simple
 make multiply
-make platform-smoke
+make policy-check
 ```
 
 Each target does three things:
@@ -89,6 +89,47 @@ The host will:
 - run the local prover
 - verify the receipt
 - print the committed journal bytes
+
+## Richer Example
+
+`policy_check` is the recommended medium-complexity sample in this repo.
+
+Execute it with the built-in private witness:
+
+```bash
+cargo run --release -- ../policy_check.bin --raw-journal --execute-only
+```
+
+Prove it:
+
+```bash
+cargo run --release -- ../policy_check.bin --raw-journal
+```
+
+Override the witness from the host:
+
+```bash
+cargo run --release -- ../policy_check.bin --raw-journal \
+  --policy-items=120,45,80 \
+  --policy-discount=20 \
+  --policy-limit=250
+```
+
+The guest commits this public summary:
+
+- item count
+- approval bit
+- subtotal
+- discount
+- total
+- limit
+
+## Experimental Low-Level Smoke
+
+`platform_smoke` is intentionally not part of the default sample set.
+
+It remains in the repo as a low-level CGo/platform experiment, but it is not
+currently the supported end-to-end path for consumers of `go-zkvm`.
 
 ## Notes
 
