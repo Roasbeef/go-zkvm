@@ -31,17 +31,17 @@ The current validated sample set is:
 - `simple`
   - execute-only: verified
   - prove+verify: verified
-  - current sibling-layout image ID: `9ac42ea490374af40aa6ca499952a133edb38df51a314b47041bf06576494f2e`
+  - current deterministic image ID: `6b8e67cf25a218d47293fb738812157200f764e5ef73aecf416caee01ef62f06`
   - current proof seal size: `203016` bytes
 - `multiply`
   - prove+verify: verified
-  - current sibling-layout image ID: `db8cb4b1a0a6045cc3e64f1eb6f2927eadd73f33bbceb261b91da1b3068e10f2`
+  - current deterministic image ID: `6871e82af736af48471e75a555fe2628ab93cd0245638f797295a1c36eeaf950`
   - committed public output: `391`
   - current proof seal size: `203016` bytes
 - `policy_check`
   - execute-only: verified
   - prove+verify: verified
-  - current sibling-layout image ID: `78e9677b5db05ea0a2a5de33c54f85d5ba1724364f8f73c150949066753144ac`
+  - current deterministic image ID: `56c9a61a2e23b1b8573d36ae84592169d9f45986e7bb332444e5d2606460477d`
   - current proof seal size: `203016` bytes
   - built-in public summary:
     - item count `3`

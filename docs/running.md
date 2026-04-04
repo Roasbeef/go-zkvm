@@ -150,19 +150,20 @@ The guest commits this public summary:
 
 ## Current Validated Sample Outputs
 
-These values come from the current sibling-layout verification pass. Treat the
-image IDs as artifact-specific rather than universal constants.
+These values come from the current deterministic verification pass using
+`make platform-standalone`. Treat the image IDs as artifact-specific constants
+for that documented build path.
 
 - `simple`
-  - image ID: `9ac42ea490374af40aa6ca499952a133edb38df51a314b47041bf06576494f2e`
+  - image ID: `6b8e67cf25a218d47293fb738812157200f764e5ef73aecf416caee01ef62f06`
   - raw journal: empty
   - proof seal size: `203016` bytes
 - `multiply`
-  - image ID: `db8cb4b1a0a6045cc3e64f1eb6f2927eadd73f33bbceb261b91da1b3068e10f2`
+  - image ID: `6871e82af736af48471e75a555fe2628ab93cd0245638f797295a1c36eeaf950`
   - public output: `391`
   - proof seal size: `203016` bytes
 - `policy_check`
-  - image ID: `78e9677b5db05ea0a2a5de33c54f85d5ba1724364f8f73c150949066753144ac`
+  - image ID: `56c9a61a2e23b1b8573d36ae84592169d9f45986e7bb332444e5d2606460477d`
   - raw journal: `0300000001000000f5000000000000001400000000000000e100000000000000fa00000000000000`
   - decoded summary:
     - item count `3`
