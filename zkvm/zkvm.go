@@ -77,11 +77,6 @@ func Halt(exitCode uint8) {
 	C.sys_halt(C.uint8_t(exitCode), (*C.uint32_t)(unsafe.Pointer(&outputDigest[0])))
 }
 
-// HaltWithDigest exits with a specific digest (for testing)
-func HaltWithDigest(exitCode uint8, digest [8]uint32) {
-	C.sys_halt(C.uint8_t(exitCode), (*C.uint32_t)(unsafe.Pointer(&digest[0])))
-}
-
 // CycleCount returns the current cycle count
 func CycleCount() uint64 {
 	return uint64(C.sys_cycle_count())

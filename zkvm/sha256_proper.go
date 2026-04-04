@@ -279,24 +279,4 @@ func shaBuffer(initialState [8]uint32, bytes []byte) [8]uint32 {
 
 	return outState
 }
-
 // Note: InitProperHasher is called lazily when needed, not in init()
-
-// TestSHAOnce runs a single SHA256 compression of a zero block and halts with the digest.
-func TestSHAOnce() {
-	var in [8]uint32
-	for i := 0; i < 8; i++ {
-		in[i] = sha256InitStateBE[i]
-	}
-	for i := 0; i < SHA256_BLOCK_SIZE; i++ {
-		shaBlockAligned[i] = 0
-	}
-	var out [8]uint32
-	C.sys_sha_compress(
-		(*C.uint32_t)(unsafe.Pointer(&out[0])),
-		(*C.uint32_t)(unsafe.Pointer(&in[0])),
-		(*C.uint8_t)(unsafe.Pointer(&shaBlockAligned[0])),
-		(*C.uint8_t)(unsafe.Pointer(&shaBlockAligned[32])),
-	)
-	HaltWithDigest(0, out)
-}
