@@ -56,6 +56,10 @@ The current validated sample set is:
 - `zkvm/`
   - guest-side Go API for host input, private stdout/stderr, public journal
     output, cycle counting, and journal digest finalization
+  - `zkvm/zkvm.go` is the public guest API surface
+  - `zkvm/sha256_proper.go` is still required on the archive-linked lane
+    because the Go guest must build the final `risc0.Output` digest before
+    calling `sys_halt`
 - `simple/`
   - smallest “hello world” guest
 - `multiply/`

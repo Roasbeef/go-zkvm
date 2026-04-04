@@ -14,6 +14,10 @@ import (
 	"unsafe"
 )
 
+// The platform archive gives us the low-level SHA syscalls, but the Go guest
+// layer still has to maintain the running journal hash and construct the final
+// risc0.Output digest passed to sys_halt.
+
 const (
 	SHA256_BLOCK_SIZE  = 64 // 64 bytes per block
 	SHA256_BLOCK_WORDS = 16 // 16 words per block
@@ -198,13 +202,6 @@ func alignUp(addr, al int) int {
 	return (addr + al - 1) & ^(al - 1)
 }
 
-// swapEndian converts little-endian to big-endian (or vice versa)
-func swapEndian(val uint32) uint32 {
-	b := make([]byte, 4)
-	binary.BigEndian.PutUint32(b, val)
-	return binary.LittleEndian.Uint32(b)
-}
-
 // taggedStruct creates a tagged struct digest as per RISC Zero spec
 func taggedStruct(tag string, digests [][8]uint32) [8]uint32 {
 	// Hash the tag string
@@ -279,4 +276,5 @@ func shaBuffer(initialState [8]uint32, bytes []byte) [8]uint32 {
 
 	return outState
 }
+
 // Note: InitProperHasher is called lazily when needed, not in init()

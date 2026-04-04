@@ -19,9 +19,15 @@ This is the guest-facing API layer. It provides:
 In practice, the two most important files are:
 
 - `zkvm/zkvm.go`
-  - the public guest API
+  - the public guest API:
+    - `Read` / `ReadValue`
+    - `Commit` / `CommitValue`
+    - `Halt`
+    - `Print` / `Debug`
+    - `CycleCount`
 - `zkvm/sha256_proper.go`
-  - the journal/output digest machinery
+  - the journal/output digest machinery that is still required even on the
+    archive-linked lane
 
 ### `go-guest-host/`
 
@@ -85,10 +91,11 @@ The host is where we:
 For the BIP-32/Taproot demo, this is the layer that writes the private seed and
 path into guest stdin and verifies the resulting receipt locally.
 
-Today, that “exact built artifact” wording matters: the linked
-`zkvm-platform` archive still leaves absolute build paths in the guest ELF, so
-rebuilding the same source tree in a different directory can change the image
-ID even when the public journal output is identical.
+Today, that “exact built artifact” wording still matters, but the recommended
+path is now the deterministic one: build the archive with
+`risc0/examples/c-guest make platform-standalone` first. That published-commit
+standalone builder eliminated the checkout-path drift we saw in the older
+workspace-local `make platform` flow.
 
 ## Journal Finalization
 
@@ -105,6 +112,14 @@ The current package handles that by:
 
 This is why the `zkvm` package is still meaningful even when the lower-level
 syscall symbols come from `libzkvm_platform.a`.
+
+The current cleanup result is:
+
+- `zkvm/sha256.go` is gone
+- `zkvm/sha256_proper.go` stays because the Go layer still owns journal hashing
+  and final output-tag construction
+- `zkvm/zkvm.go` stays because it is the supported guest API surface, not
+  legacy prototype glue
 
 ## Binary Packaging
 
