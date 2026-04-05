@@ -14,15 +14,18 @@ Most of the repo is now organized around the second model.
    - repo purpose, status, and top-level layout
 2. `go-zkvm-overview.md`
    - end-to-end architecture and the recommended flow
-3. `tinygo-zkvm-target.md`
+3. `go-facing-host-boundary.md`
+   - what it would take to expose proving to Go callers without pretending the
+     prover itself is pure Go
+4. `tinygo-zkvm-target.md`
    - what had to change in TinyGo to make this work
-4. `implementation-guide.md`
+5. `implementation-guide.md`
    - guest-side Go package, host harness, and packer details
-5. `syscall-architecture.md`
+6. `syscall-architecture.md`
    - where syscalls come from in the legacy and archive-linked models
-6. `journal-digest.md`
+7. `journal-digest.md`
    - why journal output needs a final output digest and how the Go guest does it
-7. `running.md`
+8. `running.md`
    - practical build, execute, and prove commands, plus the current validated
      sample outputs
 
@@ -30,6 +33,7 @@ Most of the repo is now organized around the second model.
 
 - Architecture:
   - `go-zkvm-overview.md`
+  - `go-facing-host-boundary.md`
   - `tinygo-zkvm-target.md`
   - `syscall-architecture.md`
 - Guest and host implementation:
