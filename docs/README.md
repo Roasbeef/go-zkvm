@@ -17,15 +17,17 @@ Most of the repo is now organized around the second model.
 3. `go-facing-host-boundary.md`
    - what it would take to expose proving to Go callers without pretending the
      prover itself is pure Go
-4. `tinygo-zkvm-target.md`
+4. `go-ffi-api-plan.md`
+   - the concrete Option 2 FFI API and ABI plan before implementation
+5. `tinygo-zkvm-target.md`
    - what had to change in TinyGo to make this work
-5. `implementation-guide.md`
+6. `implementation-guide.md`
    - guest-side Go package, host harness, and packer details
-6. `syscall-architecture.md`
+7. `syscall-architecture.md`
    - where syscalls come from in the legacy and archive-linked models
-7. `journal-digest.md`
+8. `journal-digest.md`
    - why journal output needs a final output digest and how the Go guest does it
-8. `running.md`
+9. `running.md`
    - practical build, execute, and prove commands, plus the current validated
      sample outputs
 
@@ -34,6 +36,7 @@ Most of the repo is now organized around the second model.
 - Architecture:
   - `go-zkvm-overview.md`
   - `go-facing-host-boundary.md`
+  - `go-ffi-api-plan.md`
   - `tinygo-zkvm-target.md`
   - `syscall-architecture.md`
 - Guest and host implementation:

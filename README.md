@@ -273,5 +273,6 @@ Start with:
 - `docs/README.md`
 - `docs/go-zkvm-overview.md`
 - `docs/go-facing-host-boundary.md`
+- `docs/go-ffi-api-plan.md`
 - `docs/implementation-guide.md`
 - `docs/running.md`

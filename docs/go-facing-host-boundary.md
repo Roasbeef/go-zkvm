@@ -199,6 +199,10 @@ Why CLI first:
 - it avoids committing to a C ABI too early
 - it gives Go callers an immediate proving interface with minimal risk
 
+For the concrete Option 2 plan we want to build next, see:
+
+- `go-ffi-api-plan.md`
+
 ## Proposed First-Phase Design
 
 ### Rust Side
