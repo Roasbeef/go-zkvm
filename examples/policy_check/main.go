@@ -1,7 +1,15 @@
+// Package main demonstrates a structured witness with validation, derived
+// computation, and a multi-field public summary. The host provides a list of
+// private item values, a discount, and a spending limit. The guest validates
+// all inputs, computes the totals, and commits a public summary that says
+// whether the purchase was approved -- without revealing individual item
+// values.
 package main
 
 import "github.com/roasbeef/go-zkvm/zkvm"
 
+// maxPolicyItems caps the number of line items to prevent unbounded iteration
+// inside the guest.
 const maxPolicyItems = 16
 
 func main() {

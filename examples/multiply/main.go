@@ -1,14 +1,18 @@
+// Package main demonstrates private-input, public-output guest computation.
+// The host provides two secret factors (a and b) via stdin. The guest
+// validates them, computes the product, and commits only the product to the
+// public journal. A verifier sees the product but never learns the factors.
 package main
 
 import "github.com/roasbeef/go-zkvm/zkvm"
 
 func main() {
-	// Read input values from host
+	// These factors are private witness data; only the product is public.
 	var a, b uint64
 	zkvm.ReadValue(&a)
 	zkvm.ReadValue(&b)
 
-	// Verify neither is 1 (nontrivial factors) and neither is 0
+	// Validate: both factors must be non-trivial (not 0 or 1).
 	if a == 0 || b == 0 {
 		zkvm.Debug("Error: Zero factor\n")
 		zkvm.Halt(1)
@@ -18,21 +22,18 @@ func main() {
 		zkvm.Halt(1)
 	}
 
-	// Compute the product
 	product := a * b
 
-	// Check for overflow
+	// Guard against silent overflow.
 	if product/a != b {
 		zkvm.Debug("Error: Integer overflow\n")
 		zkvm.Halt(1)
 	}
 
-	// Commit the product to the journal (public output)
+	// The product is the only public output. The verifier sees this value
+	// in the receipt journal but cannot recover a or b.
 	zkvm.CommitValue(&product)
 
-	// Debug output (private)
 	zkvm.Print("Successfully computed product\n")
-
-	// Exit successfully
 	zkvm.Halt(0)
 }
