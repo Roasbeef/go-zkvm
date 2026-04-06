@@ -104,16 +104,16 @@ flowchart LR
 
 ## What This Repo Provides
 
-- `zkvm/` -- guest-side Go API: read private input, commit public journal
+- `zkvm/`: guest-side Go API: read private input, commit public journal
   output, journal digest finalization, cycle counting
-- `host/` -- typed Go host API for `ComputeImageID`, `Execute`, `Prove`, and
+- `host/`: typed Go host API for `ComputeImageID`, `Execute`, `Prove`, and
   `Verify`, backed by the Rust proving engine via FFI
-- `examples/` -- three sample guests (simple, multiply, policy_check)
-- `host-core/` + `host-ffi/` -- shared Rust host logic and cdylib boundary
-- `go-guest-host/` -- Rust reference CLI for debugging and validation
-- `convert_to_r0bf.go` / `extract_r0bf.go` -- R0BF guest binary packer and
+- `examples/`: three sample guests (simple, multiply, policy_check)
+- `host-core/` + `host-ffi/`: shared Rust host logic and cdylib boundary
+- `go-guest-host/`: Rust reference CLI for debugging and validation
+- `convert_to_r0bf.go` / `extract_r0bf.go`: R0BF guest binary packer and
   unpacker
-- `docs/` -- architecture notes, tutorial, host API reference, and runbooks
+- `docs/`: architecture notes, tutorial, host API reference, and runbooks
 
 ## Current Status
 
@@ -309,8 +309,8 @@ patches.
 
 Start with:
 
-- `docs/tutorial.md` -- guided walkthrough from first guest to real application
-- `docs/host-api.md` -- full Go host API reference
-- `docs/go-zkvm-overview.md` -- end-to-end architecture
-- `docs/README.md` -- reading order and topic map
-- `docs/running.md` -- build, execute, prove commands
+- `docs/tutorial.md`: guided walkthrough from first guest to real application
+- `docs/host-api.md`: full Go host API reference
+- `docs/go-zkvm-overview.md`: end-to-end architecture
+- `docs/README.md`: reading order and topic map
+- `docs/running.md`: build, execute, prove commands
