@@ -24,25 +24,19 @@ reference Rust CLI rather than the primary host integration surface.
 4. `host-api.md`
    - full Go host API reference: client lifecycle, operations, options, errors,
      worked examples
-5. `go-facing-host-boundary.md`
-   - the original boundary-design reasoning, plus the current host split after
-     implementation
-6. `go-ffi-api-plan.md`
-   - the concrete Option 2 FFI API and ABI plan, now updated to match the
-     implemented v1 surface
-7. `tinygo-zkvm-target.md`
+5. `tinygo-zkvm-target.md`
    - what had to change in TinyGo to make this work
-8. `implementation-guide.md`
+6. `implementation-guide.md`
    - guest-side Go package, host harness, and packer details
-9. `syscall-architecture.md`
+7. `syscall-architecture.md`
    - where syscalls come from in the legacy and archive-linked models
-10. `journal-digest.md`
+8. `journal-digest.md`
     - why journal output needs a final output digest and how the Go guest does
       it
-11. `running.md`
+9. `running.md`
     - practical build, execute, prove, and FFI validation commands, plus the
       current validated sample outputs
-12. `code-format.md`
+10. `code-format.md`
     - the local Go formatting and commenting conventions used for host-side code
 
 ## Topic Map
@@ -51,8 +45,6 @@ reference Rust CLI rather than the primary host integration surface.
   - `tutorial.md`
 - Architecture:
   - `go-zkvm-overview.md`
-  - `go-facing-host-boundary.md`
-  - `go-ffi-api-plan.md`
   - `tinygo-zkvm-target.md`
   - `syscall-architecture.md`
 - Host API:
@@ -62,7 +54,6 @@ reference Rust CLI rather than the primary host integration surface.
   - `ecall-reference.md`
 - Packaging and receipt-visible output:
   - `journal-digest.md`
-  - `static-library-approach.md`
 - Runbooks:
   - `running.md`
   - `code-format.md`
