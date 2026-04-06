@@ -6,9 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
-const abiVersion = 1
+const (
+	abiVersion = 1
+	// LibraryPathEnvVar is the optional environment variable used to
+	// override the default `host-ffi` shared-library lookup path.
+	LibraryPathEnvVar = "GO_ZKVM_HOST_LIBRARY_PATH"
+)
 
 // Client is the Go-facing wrapper around the Rust host FFI boundary.
 type Client struct {
@@ -119,7 +125,8 @@ func (e *HostError) Error() string {
 	return e.Op + " (" + e.Code + "): " + e.Message
 }
 
-// WithLibraryPath overrides the default shared-library lookup path used by New.
+// WithLibraryPath overrides the shared-library lookup path used by New. This
+// takes precedence over LibraryPathEnvVar and the sibling-layout fallback.
 func WithLibraryPath(path string) ClientOption {
 	return func(cfg *clientConfig) {
 		cfg.libraryPath = path
@@ -143,7 +150,7 @@ func WithReceiptSelfVerify(enabled bool) RunOption {
 // New constructs a host Client and loads the shared library immediately.
 func New(opts ...ClientOption) (*Client, error) {
 	cfg := clientConfig{
-		libraryPath: defaultLibraryPath(),
+		libraryPath: resolvedLibraryPath(""),
 	}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -252,6 +259,20 @@ func defaultLibraryPath() string {
 			dir, "..", "host-ffi", "target", "release", libName,
 		),
 	)
+}
+
+func resolvedLibraryPath(explicitPath string) string {
+	if strings.TrimSpace(explicitPath) != "" {
+		return explicitPath
+	}
+
+	if envPath, ok := os.LookupEnv(LibraryPathEnvVar); ok &&
+		strings.TrimSpace(envPath) != "" {
+
+		return envPath
+	}
+
+	return defaultLibraryPath()
 }
 
 func defaultRunConfig() runConfig {

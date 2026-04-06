@@ -247,6 +247,13 @@ if err != nil {
 _ = verifyResult
 ```
 
+Library loading policy:
+
+- `host.WithLibraryPath(...)` is the strongest override
+- otherwise `host` checks `GO_ZKVM_HOST_LIBRARY_PATH`
+- otherwise it falls back to the sibling-layout build path under
+  `host-ffi/target/release/`
+
 If you want proof artifacts on disk from the Go API, persist
 `proveResult.Receipt` yourself and write any verifier-facing metadata alongside
 it.

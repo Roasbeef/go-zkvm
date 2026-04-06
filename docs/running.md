@@ -151,9 +151,14 @@ The supported and preferred host-side Go API is:
 github.com/roasbeef/go-zkvm/host
 ```
 
-The package loads the Rust shared library from the default build path, checks
-the ABI version, and then exposes typed `ComputeImageID`, `Execute`, `Prove`,
-and `Verify` methods.
+The package loads the Rust shared library, checks the ABI version, and then
+exposes typed `ComputeImageID`, `Execute`, `Prove`, and `Verify` methods.
+
+Library lookup precedence is:
+
+1. `host.WithLibraryPath(...)`
+2. `GO_ZKVM_HOST_LIBRARY_PATH`
+3. the sibling-layout fallback under `host-ffi/target/release/`
 
 The fastest built-in validation path is:
 

@@ -82,6 +82,8 @@ This repo now exposes the proving-side control plane in two forms:
 - `host/`
   - typed Go API for `ComputeImageID`, `Execute`, `Prove`, and `Verify`
   - the primary consumer-facing host surface
+  - library lookup is explicit: `WithLibraryPath(...)` first, then
+    `GO_ZKVM_HOST_LIBRARY_PATH`, then the sibling-layout fallback
 - `host-core/` + `host-ffi/`
   - shared Rust host logic plus the `cdylib` boundary used by the Go package
 - `go-guest-host/`
