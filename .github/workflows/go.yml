@@ -14,22 +14,123 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout go-zkvm
+        uses: actions/checkout@v5
+        with:
+          path: go-zkvm
+
+      - name: Checkout risc0 sibling
+        uses: actions/checkout@v5
+        with:
+          repository: Roasbeef/risc0
+          path: risc0
+          lfs: true
+          token: ${{ secrets.ROASBEEF_CI_TOKEN || github.token }}
+
+      - name: Checkout tinygo-zkvm sibling
+        uses: actions/checkout@v5
+        with:
+          repository: Roasbeef/tinygo-zkvm
+          path: tinygo-zkvm
+          submodules: recursive
+          token: ${{ secrets.ROASBEEF_CI_TOKEN || github.token }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.24.4"
+          cache-dependency-path: go-zkvm/go.sum
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            go-zkvm/go-guest-host
+            go-zkvm/host-core
+            go-zkvm/host-ffi
+            risc0
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends \
+            cmake \
+            ninja-build \
+            python3
+
+      - name: Restore TinyGo LLVM source cache
+        uses: actions/cache/restore@v4
+        id: tinygo-llvm-source
+        with:
+          key: tinygo-llvm-source-20-linux-v1
+          path: |
+            tinygo-zkvm/llvm-project/clang/lib/Headers
+            tinygo-zkvm/llvm-project/clang/include
+            tinygo-zkvm/llvm-project/compiler-rt
+            tinygo-zkvm/llvm-project/lld/include
+            tinygo-zkvm/llvm-project/llvm/include
+
+      - name: Download TinyGo LLVM source
+        if: steps.tinygo-llvm-source.outputs.cache-hit != 'true'
+        working-directory: tinygo-zkvm
+        run: make llvm-source
+
+      - name: Save TinyGo LLVM source cache
+        uses: actions/cache/save@v4
+        if: steps.tinygo-llvm-source.outputs.cache-hit != 'true'
+        with:
+          key: ${{ steps.tinygo-llvm-source.outputs.cache-primary-key }}
+          path: |
+            tinygo-zkvm/llvm-project/clang/lib/Headers
+            tinygo-zkvm/llvm-project/clang/include
+            tinygo-zkvm/llvm-project/compiler-rt
+            tinygo-zkvm/llvm-project/lld/include
+            tinygo-zkvm/llvm-project/llvm/include
+
+      - name: Restore TinyGo LLVM build cache
+        uses: actions/cache/restore@v4
+        id: tinygo-llvm-build
+        with:
+          key: tinygo-llvm-build-20-linux-v1
+          path: tinygo-zkvm/llvm-build
+
+      - name: Build TinyGo LLVM
+        if: steps.tinygo-llvm-build.outputs.cache-hit != 'true'
+        working-directory: tinygo-zkvm
+        run: |
+          make llvm-source
+          make llvm-build
+          find llvm-build -name CMakeFiles -prune -exec rm -r '{}' \;
+
+      - name: Save TinyGo LLVM build cache
+        uses: actions/cache/save@v4
+        if: steps.tinygo-llvm-build.outputs.cache-hit != 'true'
+        with:
+          key: ${{ steps.tinygo-llvm-build.outputs.cache-primary-key }}
+          path: tinygo-zkvm/llvm-build
+
+      - name: Build TinyGo
+        working-directory: tinygo-zkvm
+        run: make tinygo
+
+      - name: Build guest prerequisites
+        working-directory: go-zkvm
+        run: |
+          make platform-standalone
+          make host-ffi
+          make simple
 
       - name: fmt-check
+        working-directory: go-zkvm
         run: make fmt-check
 
-      - name: tidy-check
-        run: make tidy-check
-
       - name: lint-native
+        working-directory: go-zkvm
         run: make lint-native
 
       - name: native-check
+        working-directory: go-zkvm
         run: make native-check
