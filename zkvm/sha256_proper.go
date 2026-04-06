@@ -1,6 +1,18 @@
 //go:build tinygo.zkvm
 // +build tinygo.zkvm
 
+// This file implements the journal digest finalization for the Go guest layer.
+//
+// Even though libzkvm_platform.a provides the low-level SHA-256 syscalls
+// (sys_sha_compress, sys_sha_buffer), the Go guest layer still needs to:
+//   - maintain a running SHA-256 hash state across Commit calls
+//   - apply SHA-256 padding when Halt is called
+//   - wrap the final journal digest into the risc0.Output tagged struct
+//   - pass the result to sys_halt
+//
+// The Rust guest SDK does this automatically inside its journal implementation.
+// Since we are not using the Rust SDK, this Go file reimplements that logic
+// using the zkVM SHA acceleration syscalls.
 package zkvm
 
 /*
@@ -27,17 +39,21 @@ const (
 	WORD_SIZE = 4
 )
 
-// SHA256 initial state - already byte-swapped for RISC-V little-endian
-// These values are from the sort.go example
+// sha256InitStateBE holds the SHA-256 initial hash values (H0..H7) with
+// their bytes swapped to little-endian word order. The risc0 RISC-V SHA
+// acceleration operates on 32-bit words in the machine's native little-endian
+// byte order, so the standard big-endian SHA-256 constants must be
+// byte-swapped before use. For example, H0 = 0x6a09e667 becomes
+// 0x67e6096a when its four bytes are reversed.
 var sha256InitStateBE = [8]uint32{
-	1743128938, // 0x67e6096a - byte-swapped 0x6a09e667
-	2242799547, // 0x85ae67bb - byte-swapped 0xbb67ae85
-	1928556092, // 0x72f36e3c - byte-swapped 0x3c6ef372
-	989155237,  // 0x3af54fa5 - byte-swapped 0xa54ff53a
-	2136084049, // 0x7f520e51 - byte-swapped 0x510e527f
-	2355627419, // 0x8c68059b - byte-swapped 0x9b05688c
-	2883158815, // 0xabd9831f - byte-swapped 0x1f83d9ab
-	432922715,  // 0x19cde05b - byte-swapped 0x5be0cd19
+	1743128938, // 0x67e6096a - byte-swapped H0 (0x6a09e667)
+	2242799547, // 0x85ae67bb - byte-swapped H1 (0xbb67ae85)
+	1928556092, // 0x72f36e3c - byte-swapped H2 (0x3c6ef372)
+	989155237,  // 0x3af54fa5 - byte-swapped H3 (0xa54ff53a)
+	2136084049, // 0x7f520e51 - byte-swapped H4 (0x510e527f)
+	2355627419, // 0x8c68059b - byte-swapped H5 (0x9b05688c)
+	2883158815, // 0xabd9831f - byte-swapped H6 (0x1f83d9ab)
+	432922715,  // 0x19cde05b - byte-swapped H7 (0x5be0cd19)
 }
 
 // ProperJournalHasher implements the running journal hash state using the zkVM
@@ -108,7 +124,10 @@ func UpdateProperHasher(data []byte) {
 	}
 }
 
-// processBlock processes a single 64-byte block
+// processBlock compresses a single 64-byte SHA-256 block into the running
+// hash state using the zkVM sys_sha_compress syscall. The block is copied
+// into a word-aligned static buffer before the syscall because the RISC-V
+// SHA acceleration requires 4-byte alignment.
 func processBlock(block []byte) {
 	// Ensure contiguous, word-aligned block by copying into a static buffer
 	for i := 0; i < SHA256_BLOCK_SIZE; i++ {
@@ -189,7 +208,10 @@ func FinalizeProperHasher() [8]uint32 {
 	return outputDigest
 }
 
-// computePaddedLength computes the padded length in bytes
+// computePaddedLength computes the total padded message length in bytes for
+// SHA-256. The padding consists of a 0x80 end marker, zero-fill to the next
+// block boundary minus 8 bytes, and a 64-bit big-endian bit count trailer.
+// The result is always a multiple of SHA256_BLOCK_SIZE (64 bytes).
 func computePaddedLength(dataLen int) int {
 	const WordSize = 4
 	const BlockWords = 16
@@ -203,11 +225,19 @@ func computePaddedLength(dataLen int) int {
 	return nWords * WordSize
 }
 
+// alignUp rounds addr up to the nearest multiple of al.
 func alignUp(addr, al int) int {
 	return (addr + al - 1) & ^(al - 1)
 }
 
-// taggedStruct creates a tagged struct digest as per RISC Zero spec
+// taggedStruct creates a tagged struct digest as defined by the risc0 spec.
+// The tagged struct convention hashes:
+//
+//	SHA256(SHA256(tag_string) || digest_0 || digest_1 || ... || count_u16_le)
+//
+// This is how risc0 creates domain-separated composite digests. For example,
+// "risc0.Output" combines the journal digest and assumptions digest into the
+// final output digest that sys_halt expects.
 func taggedStruct(tag string, digests [][8]uint32) [8]uint32 {
 	// Hash the tag string
 	tagDigest := shaBuffer(sha256InitStateBE, []byte(tag))
@@ -234,7 +264,9 @@ func taggedStruct(tag string, digests [][8]uint32) [8]uint32 {
 	return shaBuffer(sha256InitStateBE, allBytes)
 }
 
-// shaBuffer computes SHA256 of data using sys_sha_buffer
+// shaBuffer computes the SHA-256 hash of data using the zkVM sys_sha_compress
+// syscall, starting from the given initial hash state. This handles padding
+// internally and returns the final 8-word hash state.
 func shaBuffer(initialState [8]uint32, bytes []byte) [8]uint32 {
 	var outState [8]uint32
 
