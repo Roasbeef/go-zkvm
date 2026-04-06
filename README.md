@@ -1,18 +1,53 @@
 # go-zkvm
 
-`go-zkvm` is a TinyGo-first toolkit for building RISC Zero zkVM guests in Go.
-It packages the non-Rust guest flow into a reusable set of pieces:
+`go-zkvm` is a TinyGo-first toolkit for writing zero-knowledge guest programs
+in Go and proving them with the RISC Zero zkVM. A guest runs inside the VM,
+reads private input, computes on it, and commits public output. The proof
+guarantees the computation was done correctly without revealing the private
+input.
 
-- a guest-side Go API in `zkvm/`
-- a TinyGo build flow that targets the zkVM memory map
-- an R0BF packer for combining a user ELF with `v1compat.elf`
-- host-side proving surfaces:
-  - a primary FFI-backed Go package in `host/`
-  - a Rust reference CLI in `go-guest-host/` for debugging and sample
-    validation
+Write a guest:
 
-The goal is not “make one demo work”, but “make Go a repeatable guest language
-for risc0”.
+```go
+package main
+
+import "github.com/roasbeef/go-zkvm/zkvm"
+
+func main() {
+    // Private witness: only the prover sees these.
+    var a, b uint64
+    zkvm.ReadValue(&a)
+    zkvm.ReadValue(&b)
+
+    // Public claim: the verifier sees the product.
+    product := a * b
+    zkvm.CommitValue(&product)
+    zkvm.Halt(0)
+}
+```
+
+Prove and verify it from Go:
+
+```go
+guest, _ := host.ReadGuestFile("./multiply.bin")
+
+client, _ := host.New()
+defer client.Close()
+
+result, _ := client.Prove(host.ProveRequest{
+    GuestBinary: guest,
+    Stdin:       witnessBytes,
+})
+
+verified, _ := client.Verify(host.VerifyRequest{
+    Receipt:         result.Receipt,
+    ImageID:         result.ImageID,
+    ExpectedJournal: result.Journal,
+})
+```
+
+The goal is not "make one demo work", but "make Go a repeatable guest language
+for risc0".
 
 ## Architecture
 
@@ -67,6 +102,19 @@ flowchart LR
     end
 ```
 
+## What This Repo Provides
+
+- `zkvm/` -- guest-side Go API: read private input, commit public journal
+  output, journal digest finalization, cycle counting
+- `host/` -- typed Go host API for `ComputeImageID`, `Execute`, `Prove`, and
+  `Verify`, backed by the Rust proving engine via FFI
+- `examples/` -- three sample guests (simple, multiply, policy_check)
+- `host-core/` + `host-ffi/` -- shared Rust host logic and cdylib boundary
+- `go-guest-host/` -- Rust reference CLI for debugging and validation
+- `convert_to_r0bf.go` / `extract_r0bf.go` -- R0BF guest binary packer and
+  unpacker
+- `docs/` -- architecture notes, tutorial, host API reference, and runbooks
+
 ## Current Status
 
 The working path in this repo is the current upstream-aligned lane:
@@ -108,42 +156,6 @@ The current validated sample set is:
     - total `225`
     - limit `250`
 
-## Repo Contents
-
-- `zkvm/`
-  - guest-side Go API for host input, private stdout/stderr, public journal
-    output, cycle counting, and journal digest finalization
-  - `zkvm/zkvm.go` is the public guest API surface
-  - `zkvm/sha256_proper.go` is still required on the archive-linked lane
-    because the Go guest must build the final `risc0.Output` digest before
-    calling `sys_halt`
-- `examples/`
-  - `examples/simple/`
-    - smallest “hello world” guest
-  - `examples/multiply/`
-    - minimal witness-in, public-result-out example
-  - `examples/policy_check/`
-    - richer structured-witness example that feeds multiple private values from
-      the host and commits a small public policy summary
-- `host/`
-  - typed Go host API for `ComputeImageID`, `Execute`, `Prove`, and `Verify`
-  - loads the Rust proving engine through the `host-ffi` shared library
-- `host-core/`
-  - shared Rust host logic used by both the FFI layer and the reference CLI
-- `host-ffi/`
-  - Rust `cdylib` exposing the minimal C ABI used by the Go `host` package
-- `go-guest-host/`
-  - Rust reference CLI that loads `.bin` guests, writes private witness data,
-    and executes or proves them
-  - kept as a debugging and validation surface; not the primary Go-facing host
-    API
-- `convert_to_r0bf.go`
-  - packs a TinyGo ELF together with the risc0 `v1compat` kernel ELF
-- `extract_r0bf.go`
-  - unpacks an R0BF guest binary back into user/kernel ELF halves
-- `docs/`
-  - architecture notes, syscall notes, implementation details, and runbooks
-
 ## Intended Repository Layout
 
 The intended sibling layout is:
@@ -157,21 +169,6 @@ github.com/roasbeef/
 ```
 
 `go-zkvm` depends on `risc0` and `tinygo-zkvm` being checked out next to it.
-
-## Recommended Flow
-
-The recommended build path is:
-
-1. build the TinyGo fork with the zkVM target support
-2. build the risc0 platform archive from `examples/c-guest`
-   use `make platform-standalone` for the deterministic published-commit path
-3. compile the Go guest with TinyGo target `zkvm-platform`
-4. pack the guest ELF with `v1compat.elf`
-5. execute or prove it with either:
-   - the Go `host` package
-   - the Rust reference harness
-
-That is the path that produced the current working local proofs.
 
 ## Quick Start
 
@@ -246,7 +243,7 @@ cargo run --release -- ../simple.bin --raw-journal --execute-only
 ```
 
 Use this path when you want the Rust reference CLI directly. For normal Go
-integration, prefer the typed `host/` package shown below.
+integration, prefer the typed `host/` package.
 
 ### Reference CLI: Prove And Verify
 
@@ -264,43 +261,10 @@ does not write a receipt file unless you add that behavior yourself.
 
 ## Go Host API
 
-The new host-side Go package is:
+The host-side Go package is:
 
 ```text
 github.com/roasbeef/go-zkvm/host
-```
-
-Minimal prove-and-verify shape:
-
-```go
-guestBinary, err := host.ReadGuestFile("./simple.bin")
-if err != nil {
-	panic(err)
-}
-
-client, err := host.New()
-if err != nil {
-	panic(err)
-}
-defer client.Close()
-
-proveResult, err := client.Prove(host.ProveRequest{
-	GuestBinary: guestBinary,
-})
-if err != nil {
-	panic(err)
-}
-
-verifyResult, err := client.Verify(host.VerifyRequest{
-	Receipt:         proveResult.Receipt,
-	ImageID:         proveResult.ImageID,
-	ExpectedJournal: proveResult.Journal,
-})
-if err != nil {
-	panic(err)
-}
-
-_ = verifyResult
 ```
 
 Library loading policy:
@@ -321,79 +285,7 @@ Important boundary note:
 - that JSON layer is only the control envelope between Go and Rust
 - it is not part of the guest witness format, journal format, or receipt format
 
-## Multiply Example
-
-`multiply` is the smallest useful zkVM programming example in this repo. It
-reads two private values from the host, multiplies them inside the guest, and
-commits only the public result.
-
-```go
-package main
-
-import "github.com/roasbeef/go-zkvm/zkvm"
-
-func main() {
-	var a uint64
-	var b uint64
-
-	zkvm.ReadValue(&a)
-	zkvm.ReadValue(&b)
-
-	product := a * b
-	zkvm.CommitValue(&product)
-	zkvm.Halt(0)
-}
-```
-
-That is the core model for Go guests:
-
-1. read private witness data from the host
-2. compute inside the guest
-3. commit only the public claim material
-4. halt with the final output digest
-
-Prove it from the reference CLI in `go-guest-host/` with:
-
-```bash
-cargo run --release -- ../multiply.bin
-```
-
-## Policy Check Example
-
-`policy_check` is the more complete “how the pieces fit together” sample in
-this repo. The host writes:
-
-- a private item count
-- a private list of item values
-- a private discount
-- a private approval limit
-
-The guest:
-
-- validates the witness
-- computes a subtotal and final total
-- derives a public approval bit
-- commits a compact public summary only
-
-Run it with the built-in sample witness:
-
-```bash
-make policy-check
-cd go-guest-host
-cargo run --release -- ../policy_check.bin --raw-journal --execute-only
-```
-
-or prove it:
-
-```bash
-cargo run --release -- ../policy_check.bin --raw-journal
-```
-
-You can also override the built-in witness from the host with:
-
-- `--policy-items=120,45,80`
-- `--policy-discount=20`
-- `--policy-limit=250`
+For the full API reference, see `docs/host-api.md`.
 
 ## What Had To Change In TinyGo
 
@@ -401,7 +293,7 @@ Getting Go onto the zkVM required more than adding a target JSON:
 
 - a TinyGo target that matches the risc0 guest memory map
 - startup/runtime wiring that works for the zkVM environment
-- task stack/runtime build-tag fixes for TinyGo’s RISC-V runtime selection
+- task stack/runtime build-tag fixes for TinyGo's RISC-V runtime selection
 - a reliable way to link upstream `libzkvm_platform.a`
 - a clean split between the legacy handwritten-syscall path and the newer
   archive-linked path
@@ -417,9 +309,8 @@ patches.
 
 Start with:
 
-- `docs/README.md`
-- `docs/go-zkvm-overview.md`
-- `docs/go-facing-host-boundary.md`
-- `docs/go-ffi-api-plan.md`
-- `docs/implementation-guide.md`
-- `docs/running.md`
+- `docs/tutorial.md` -- guided walkthrough from first guest to real application
+- `docs/host-api.md` -- full Go host API reference
+- `docs/go-zkvm-overview.md` -- end-to-end architecture
+- `docs/README.md` -- reading order and topic map
+- `docs/running.md` -- build, execute, prove commands
