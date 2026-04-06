@@ -135,6 +135,8 @@ That is the path that produced the current working local proofs.
 Fresh-clone notes:
 
 - in `../tinygo-zkvm`, run `git submodule update --init --recursive`
+- in `../tinygo-zkvm`, run `make llvm-source` once before the first
+  external-LLVM build so the repo-local Clang/LLD headers are present
 - in `../risc0`, run `git lfs pull` before the Rust host/prover build
 
 If your default `go` in `PATH` is newer than TinyGo currently supports on this

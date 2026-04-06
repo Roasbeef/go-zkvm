@@ -19,6 +19,8 @@ github.com/roasbeef/
 Fresh-clone setup notes:
 
 - in `../tinygo-zkvm`, run `git submodule update --init --recursive`
+- in `../tinygo-zkvm`, run `make llvm-source` once before the first
+  external-LLVM build so the repo-local Clang/LLD headers are available
 - in `../risc0`, run `git lfs pull` before building the Rust host/prover path
 
 If your shell default is a newer Go release, export the GOROOT TinyGo should
@@ -33,6 +35,7 @@ export GO_GOROOT=/path/to/go1.24.4
 From `tinygo-zkvm/`:
 
 ```bash
+make llvm-source
 LLVM_BUILDDIR=/opt/homebrew/opt/llvm \
 CGO_LDFLAGS_EXTRA='-L/opt/homebrew/lib' \
 CLANG_EXTRA_LIB_NAMES='clangARCMigrate clangStaticAnalyzerCore clangStaticAnalyzerFrontend clangStaticAnalyzerCheckers' \
@@ -40,6 +43,8 @@ make
 ```
 
 That is the concrete local recipe used on the current Apple Silicon lane.
+Even when you reuse a system LLVM install, the TinyGo build still needs the
+repo-local `llvm-project` source checkout for Clang and LLD headers.
 
 ## Build The risc0 Platform Archive
 
