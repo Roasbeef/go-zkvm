@@ -8,18 +8,6 @@ import (
 	"os"
 )
 
-// R0BF header structure based on observed format in multiply.bin
-type R0BFHeader struct {
-	Magic    [4]byte // "R0BF"
-	Version  uint32  // 1
-	Field1   uint32  // 16
-	Field2   uint32  // 1
-	Field3   uint32  // 8
-	Padding1 [3]byte // 0x00, 0x00, 0x05
-	Version2 [5]byte // "1.0.0"
-	ElfSize  uint32  // Size of embedded ELF
-}
-
 func main() {
 	if len(os.Args) != 4 {
 		fmt.Fprintf(os.Stderr, "Usage: %s <user.elf> <kernel.elf> <output.bin>\n", os.Args[0])

@@ -3,3 +3,5 @@
 convert_to_r0bf
 extract_r0bf
 go-guest-host/target/
+host-ffi/target/
+tools/custom-gcl

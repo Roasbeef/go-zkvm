@@ -1,4 +1,7 @@
-use risc0_zkvm::{compute_image_id, default_executor, default_prover, ExecutorEnv};
+use host_core::{
+    compute_image_id_hex, execute as host_execute, prove as host_prove, ExecuteRequest,
+    ProveRequest,
+};
 use std::{env, fs};
 
 const BIP32_HARDENED_KEY_START: u32 = 0x8000_0000;
@@ -233,6 +236,26 @@ fn print_policy_summary(bytes: &[u8]) {
     println!("  Limit: {}", limit);
 }
 
+fn append_u32_le(out: &mut Vec<u8>, value: u32) {
+    out.extend_from_slice(&value.to_le_bytes());
+}
+
+fn append_u64_le(out: &mut Vec<u8>, value: u64) {
+    out.extend_from_slice(&value.to_le_bytes());
+}
+
+fn append_u32_slice(out: &mut Vec<u8>, values: &[u32]) {
+    for value in values {
+        append_u32_le(out, *value);
+    }
+}
+
+fn append_u64_slice(out: &mut Vec<u8>, values: &[u64]) {
+    for value in values {
+        append_u64_le(out, *value);
+    }
+}
+
 fn run() {
     let mut guest_path = String::from("../multiply.bin");
     let mut raw_journal = false;
@@ -333,7 +356,7 @@ fn run() {
     println!("=== Go Guest Host ===\n");
 
     let guest_binary = fs::read(&guest_path).expect("Failed to read guest binary");
-    let image_id = compute_image_id(&guest_binary).expect("Failed to compute image ID");
+    let image_id = compute_image_id_hex(&guest_binary).expect("Failed to compute image ID");
 
     println!(
         "✓ Loaded guest binary `{}`: {} bytes",
@@ -342,7 +365,7 @@ fn run() {
     );
     println!("✓ Image ID: {}", image_id);
 
-    let env = if is_bip32_guest(&guest_path) {
+    let stdin = if is_bip32_guest(&guest_path) {
         assert!(raw_journal, "bip32 guest requires --raw-journal");
         let (seed, path, witness_flags, using_test_vector) = load_bip32_witness(
             seed_hex.as_deref(),
@@ -362,14 +385,13 @@ fn run() {
             println!("✓ Sending {witness_desc}");
         }
 
-        ExecutorEnv::builder()
-            .write_slice(&[witness_flags])
-            .write_slice(&[seed.len() as u32])
-            .write_slice(seed.as_slice())
-            .write_slice(&[path.len() as u32])
-            .write_slice(path.as_slice())
-            .build()
-            .unwrap()
+        let mut stdin = Vec::new();
+        append_u32_le(&mut stdin, witness_flags);
+        append_u32_le(&mut stdin, seed.len() as u32);
+        stdin.extend_from_slice(seed.as_slice());
+        append_u32_le(&mut stdin, path.len() as u32);
+        append_u32_slice(&mut stdin, path.as_slice());
+        stdin
     } else if is_policy_guest(&guest_path) {
         let (items, discount, limit, using_defaults) =
             load_policy_witness(policy_items.as_deref(), policy_discount, policy_limit);
@@ -381,45 +403,44 @@ fn run() {
             println!("✓ Sending private policy witness");
         }
 
-        ExecutorEnv::builder()
-            .write_slice(&[item_count])
-            .write_slice(items.as_slice())
-            .write_slice(&[discount])
-            .write_slice(&[limit])
-            .build()
-            .unwrap()
+        let mut stdin = Vec::new();
+        append_u32_le(&mut stdin, item_count);
+        append_u64_slice(&mut stdin, items.as_slice());
+        append_u64_le(&mut stdin, discount);
+        append_u64_le(&mut stdin, limit);
+        stdin
     } else if raw_journal {
         println!("✓ Running in raw-journal mode (no host inputs)");
-        ExecutorEnv::builder().build().unwrap()
+        Vec::new()
     } else {
         let a: u64 = 17;
         let b: u64 = 23;
 
         println!("✓ Sending inputs to guest: {} * {}", a, b);
 
-        ExecutorEnv::builder()
-            .write(&a)
-            .unwrap()
-            .write(&b)
-            .unwrap()
-            .build()
-            .unwrap()
+        let mut stdin = Vec::new();
+        append_u64_le(&mut stdin, a);
+        append_u64_le(&mut stdin, b);
+        stdin
     };
 
     if execute_only {
-        let exec = default_executor();
         println!("✓ Executing guest program without proving...\n");
 
-        let session = exec.execute(env, &guest_binary).expect("Execution failed");
+        let session = host_execute(ExecuteRequest {
+            guest_binary,
+            stdin,
+        })
+        .expect("Execution failed");
         println!("✓ Execution successful!");
 
         if is_policy_guest(&guest_path) {
             if raw_journal {
-                println!("✓ Raw journal hex: {}", hex(&session.journal.bytes));
+                println!("✓ Raw journal hex: {}", hex(&session.journal));
             }
-            print_policy_summary(&session.journal.bytes);
+            print_policy_summary(&session.journal);
         } else if raw_journal {
-            println!("✓ Raw journal hex: {}", hex(&session.journal.bytes));
+            println!("✓ Raw journal hex: {}", hex(&session.journal));
         } else {
             eprintln!(
                 "✗ Non-raw decode mode is only implemented for execute-only raw-journal runs"
@@ -428,37 +449,34 @@ fn run() {
         }
 
         println!("Session info:");
-        println!("  Exit code: {:?}", session.exit_code);
-        println!("  Journal size: {} bytes", session.journal.bytes.len());
-        println!("  Segments: {}", session.segments.len());
-        println!("  Rows: {}", session.rows());
+        println!("  Exit code: {}", session.exit_code);
+        println!("  Journal size: {} bytes", session.journal.len());
+        println!("  Segments: {}", session.segment_count);
+        println!("  Rows: {}", session.session_rows);
         return;
     }
 
-    let prover = default_prover();
-    println!("✓ Using prover backend: {}", prover.get_name());
     println!("✓ Proving guest execution...\n");
 
-    let prove_info = prover.prove(env, &guest_binary).expect("Proving failed");
-    let receipt = prove_info.receipt;
-
-    receipt
-        .verify(image_id)
-        .expect("Receipt verification failed");
+    let prove_result = host_prove(ProveRequest {
+        guest_binary,
+        stdin,
+        verify_receipt: true,
+    })
+    .expect("Proving failed");
+    println!("✓ Using prover backend: {}", prove_result.prover_name);
     println!("✓ Receipt verified against image ID");
 
     if is_policy_guest(&guest_path) {
         if raw_journal {
-            println!("✓ Raw journal hex: {}", hex(&receipt.journal.bytes));
+            println!("✓ Raw journal hex: {}", hex(&prove_result.journal));
         }
-        print_policy_summary(&receipt.journal.bytes);
+        print_policy_summary(&prove_result.journal);
     } else if raw_journal {
-        println!("✓ Raw journal hex: {}", hex(&receipt.journal.bytes));
+        println!("✓ Raw journal hex: {}", hex(&prove_result.journal));
     } else {
-        let product: u64 = receipt
-            .journal
-            .decode()
-            .expect("Failed to decode journal output");
+        let product =
+            decode_u64_le(&prove_result.journal, 0).expect("Failed to decode journal output");
         let expected = 17_u64 * 23_u64;
 
         println!("✓ Guest computed product: {}", product);
@@ -466,8 +484,8 @@ fn run() {
     }
 
     println!("Receipt info:");
-    println!("  Journal size: {} bytes", receipt.journal.bytes.len());
-    println!("  Proof seal size: {} bytes", receipt.seal_size());
+    println!("  Journal size: {} bytes", prove_result.journal.len());
+    println!("  Proof seal size: {} bytes", prove_result.seal_bytes);
     println!("\n✅ Go guest prove+verify PASSED!");
 }
 

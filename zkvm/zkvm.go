@@ -18,9 +18,13 @@ import (
 )
 
 const (
-	FD_STDIN   = 0
-	FD_STDOUT  = 1
-	FD_STDERR  = 2
+	// FD_STDIN is the private guest input stream.
+	FD_STDIN = 0
+	// FD_STDOUT is the private guest stdout stream.
+	FD_STDOUT = 1
+	// FD_STDERR is the private guest stderr stream.
+	FD_STDERR = 2
+	// FD_JOURNAL is the public journal stream committed into the receipt.
 	FD_JOURNAL = 3
 )
 

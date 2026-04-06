@@ -19,9 +19,12 @@ import (
 // risc0.Output digest passed to sys_halt.
 
 const (
-	SHA256_BLOCK_SIZE  = 64 // 64 bytes per block
+	// SHA256_BLOCK_SIZE is the SHA-256 block size in bytes.
+	SHA256_BLOCK_SIZE = 64 // 64 bytes per block
+	// SHA256_BLOCK_WORDS is the SHA-256 block size in 32-bit words.
 	SHA256_BLOCK_WORDS = 16 // 16 words per block
-	WORD_SIZE          = 4
+	// WORD_SIZE is the number of bytes in one 32-bit word.
+	WORD_SIZE = 4
 )
 
 // SHA256 initial state - already byte-swapped for RISC-V little-endian
@@ -37,7 +40,8 @@ var sha256InitStateBE = [8]uint32{
 	432922715,  // 0x19cde05b - byte-swapped 0x5be0cd19
 }
 
-// ProperJournalHasher implements SHA256 using sys_sha_buffer
+// ProperJournalHasher implements the running journal hash state using the zkVM
+// SHA syscalls.
 type ProperJournalHasher struct {
 	state      [8]uint32
 	bufferData [SHA256_BLOCK_SIZE]byte // Single-block buffer for leftover bytes
@@ -51,7 +55,7 @@ var properHasherInitialized bool
 // Aligned temporary buffer for SHA block processing
 var shaBlockAligned [SHA256_BLOCK_SIZE]byte
 
-// InitProperHasher initializes with SHA256 initial state
+// InitProperHasher initializes the running journal hasher state.
 func InitProperHasher() {
 	for i := 0; i < 8; i++ {
 		properHasher.state[i] = sha256InitStateBE[i]
@@ -61,7 +65,7 @@ func InitProperHasher() {
 	properHasherInitialized = true
 }
 
-// UpdateProperHasher adds data to the hash
+// UpdateProperHasher adds newly committed journal bytes to the running hash.
 func UpdateProperHasher(data []byte) {
 	if !properHasherInitialized {
 		InitProperHasher()
@@ -122,7 +126,8 @@ func processBlock(block []byte) {
 	}
 }
 
-// FinalizeProperHasher completes the hash with padding
+// FinalizeProperHasher completes the padded journal hash and returns the final
+// tagged `risc0.Output` digest passed to `sys_halt`.
 func FinalizeProperHasher() [8]uint32 {
 	if !properHasherInitialized {
 		InitProperHasher()
