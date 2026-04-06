@@ -18,57 +18,53 @@ for risc0”.
 
 ```mermaid
 flowchart TD
-    subgraph Guest Side
-        A[Go guest source] --> B[TinyGo fork<br/>zkvm-platform target]
-        B --> C[Guest ELF<br/>linked with libzkvm_platform.a]
-        C --> D[convert_to_r0bf.go<br/>+ v1compat.elf]
-        D --> E[R0BF guest binary]
+    subgraph guest [Guest Build Pipeline]
+        A[Go guest source] --> B[TinyGo zkvm-platform]
+        B --> C[Guest ELF + libzkvm_platform.a]
+        C --> D[R0BF packer + v1compat.elf]
+        D --> E[Packaged guest .bin]
     end
 
-    subgraph Host Side
-        F[Go application] --> G[“host.New()”]
-        G --> H{Operation}
-        H -->|Execute| I[“client.Execute()”]
-        H -->|Prove| J[“client.Prove()”]
-        H -->|Verify| K[“client.Verify()”]
+    subgraph host [Host Side - Go]
+        F[Go application] --> G[host.Client]
+        G --> Execute
+        G --> Prove
+        G --> Verify
     end
 
-    subgraph FFI Boundary
-        I & J & K --> L[host-ffi<br/>Rust cdylib]
-        L --> M[host-core<br/>Rust logic]
-        M --> N[risc0-zkvm<br/>prover engine]
+    subgraph ffi [FFI Boundary - Rust]
+        Execute --> L[host-ffi cdylib]
+        Prove --> L
+        Verify --> L
+        L --> M[host-core]
+        M --> N[risc0-zkvm prover]
     end
 
-    E -.->|guest binary| I & J
-    N -->|receipt + journal| F
-
-    style E fill:#f0f0f0,stroke:#333
-    style N fill:#f0f0f0,stroke:#333
+    E -.-> Execute
+    E -.-> Prove
+    N -.-> F
 ```
 
 ## Data Flow
 
 ```mermaid
 flowchart LR
-    subgraph Private
+    subgraph private [Private Witness]
         S[Seed] --> W[Witness bytes]
         P[Path] --> W
     end
 
     W -->|stdin| Guest
-    Guest -->|”fd=3 (journal)”| Journal[Public Journal]
-    Guest -->|”sys_halt(digest)”| Proof[STARK Proof]
+    Guest -->|journal fd=3| Journal[Public Journal]
+    Guest -->|halt digest| Proof[STARK Proof]
 
     Journal --> Receipt
     Proof --> Receipt
 
-    subgraph Public
+    subgraph public [Public Output]
         Receipt -->|verify| V{Valid?}
         V -->|yes| Claim[Verified Claim]
     end
-
-    style Private fill:#fff3e0,stroke:#e65100
-    style Public fill:#e8f5e9,stroke:#2e7d32
 ```
 
 ## Current Status
