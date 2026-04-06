@@ -1,3 +1,6 @@
+// Command extract_r0bf unpacks a R0BF container into the constituent user
+// ELF and kernel ELF files. This is the inverse of convert_to_r0bf and is
+// useful for inspecting or disassembling the guest binary.
 package main
 
 import (

@@ -1,3 +1,14 @@
+// Command convert_to_r0bf packs a user ELF and a kernel ELF into the R0BF
+// (RISC Zero Binary Format) container expected by the risc0 executor. The
+// R0BF layout is:
+//
+//	[magic: "R0BF" 4B] [format_version: u32_le]
+//	[header_len: u32_le] [header: KV pairs]
+//	[user_elf_len: u32_le] [user_elf: bytes]
+//	[kernel_elf: bytes (remaining)]
+//
+// The user ELF is the TinyGo-compiled guest program. The kernel ELF is the
+// risc0 v1compat kernel that provides the initial execution environment.
 package main
 
 import (
@@ -71,8 +82,8 @@ func main() {
 	// - Length of KV pair (4 bytes) = 8
 	binary.Write(&buf, binary.LittleEndian, uint32(8))
 
-	// - KV pair data (8 bytes) - this appears to be ABI version info
-	// Based on the multiply.bin: 00 00 05 31 2e 30 2e 30
+	// KV pair data (8 bytes): encodes the R0BF ABI version string "1.0.0".
+	// Byte layout: [key: 0x00 0x00] [value_len: 0x05] [value: "1.0.0"].
 	buf.Write([]byte{0x00, 0x00, 0x05, 0x31, 0x2e, 0x30, 0x2e, 0x30})
 
 	// Write user ELF size
