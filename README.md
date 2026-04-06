@@ -14,6 +14,63 @@ It packages the non-Rust guest flow into a reusable set of pieces:
 The goal is not “make one demo work”, but “make Go a repeatable guest language
 for risc0”.
 
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph Guest Side
+        A[Go guest source] --> B[TinyGo fork<br/>zkvm-platform target]
+        B --> C[Guest ELF<br/>linked with libzkvm_platform.a]
+        C --> D[convert_to_r0bf.go<br/>+ v1compat.elf]
+        D --> E[R0BF guest binary]
+    end
+
+    subgraph Host Side
+        F[Go application] --> G[“host.New()”]
+        G --> H{Operation}
+        H -->|Execute| I[“client.Execute()”]
+        H -->|Prove| J[“client.Prove()”]
+        H -->|Verify| K[“client.Verify()”]
+    end
+
+    subgraph FFI Boundary
+        I & J & K --> L[host-ffi<br/>Rust cdylib]
+        L --> M[host-core<br/>Rust logic]
+        M --> N[risc0-zkvm<br/>prover engine]
+    end
+
+    E -.->|guest binary| I & J
+    N -->|receipt + journal| F
+
+    style E fill:#f0f0f0,stroke:#333
+    style N fill:#f0f0f0,stroke:#333
+```
+
+## Data Flow
+
+```mermaid
+flowchart LR
+    subgraph Private
+        S[Seed] --> W[Witness bytes]
+        P[Path] --> W
+    end
+
+    W -->|stdin| Guest
+    Guest -->|”fd=3 (journal)”| Journal[Public Journal]
+    Guest -->|”sys_halt(digest)”| Proof[STARK Proof]
+
+    Journal --> Receipt
+    Proof --> Receipt
+
+    subgraph Public
+        Receipt -->|verify| V{Valid?}
+        V -->|yes| Claim[Verified Claim]
+    end
+
+    style Private fill:#fff3e0,stroke:#e65100
+    style Public fill:#e8f5e9,stroke:#2e7d32
+```
+
 ## Current Status
 
 The working path in this repo is the current upstream-aligned lane:
@@ -203,8 +260,9 @@ From `go-guest-host/`:
 cargo run --release -- ../simple.bin --raw-journal
 ```
 
-The host computes the image ID, runs the local prover, verifies the receipt,
-and prints the committed journal bytes plus the receipt proof seal size.
+The host computes the image ID, runs the configured risc0 prover backend,
+verifies the receipt, and prints the committed journal bytes plus the receipt
+proof seal size. The current validated lane for this repo is local proving.
 This reference CLI validates the proof inline and prints receipt metadata, but
 does not write a receipt file unless you add that behavior yourself.
 

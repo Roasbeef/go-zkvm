@@ -137,10 +137,12 @@ cargo run --release -- ../simple.bin --raw-journal
 The host will:
 
 - compute the image ID
-- run the local prover
+- run the configured risc0 prover backend
 - verify the receipt
 - print the committed journal bytes
 - print the receipt proof seal size
+
+The current validated lane for this repo is local proving.
 
 For the smallest public-output sample, prove `multiply` with:
 
