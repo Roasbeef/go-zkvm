@@ -1,3 +1,18 @@
+// This file implements the FFI boundary between Go and the Rust host prover.
+//
+// The architecture is: Go application -> cgo -> dlopen/dlsym -> Rust cdylib
+// (host-ffi) -> risc0-zkvm prover. At runtime, the Go side dynamically loads
+// the Rust shared library using dlopen and resolves 6 exported C functions via
+// dlsym. All request/response data crosses the boundary as JSON-encoded byte
+// buffers with base64-encoded binary payloads.
+//
+// Memory ownership rules:
+//   - Go owns all request buffers; Rust borrows them only for the call duration.
+//   - Rust allocates response buffers; Go copies them into Go-managed memory
+//     and then calls go_zkvm_free_buffer to release the Rust allocation.
+//   - Never call C.free on Rust-allocated memory.
+//   - Never hold Rust-returned pointers after calling go_zkvm_free_buffer.
+
 //go:build cgo
 
 package host
@@ -130,26 +145,36 @@ var (
 	loadedPath string
 )
 
+// The types below are internal ABI messages serialized as JSON across the FFI
+// boundary. They are not part of the public Go API. The public Go types are
+// in types.go.
+
+// ffiErrorResponse is the JSON error payload returned by the Rust side when
+// an FFI call fails (non-zero status code).
 type ffiErrorResponse struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
+// computeImageIDRequest is the FFI request for image ID computation.
 type computeImageIDRequest struct {
 	ABIVersion        uint32 `json:"abi_version"`
 	GuestBinaryBase64 string `json:"guest_binary_base64"`
 }
 
+// computeImageIDResponse is the FFI response for image ID computation.
 type computeImageIDResponse struct {
 	ImageID string `json:"image_id"`
 }
 
+// executeJSONRequest is the FFI request for execute-only mode.
 type executeJSONRequest struct {
 	ABIVersion        uint32 `json:"abi_version"`
 	GuestBinaryBase64 string `json:"guest_binary_base64"`
 	StdinBase64       string `json:"stdin_base64"`
 }
 
+// executeJSONResponse is the FFI response for execute-only mode.
 type executeJSONResponse struct {
 	ImageID       string `json:"image_id"`
 	JournalBase64 string `json:"journal_base64"`
@@ -158,6 +183,7 @@ type executeJSONResponse struct {
 	SessionRows   uint64 `json:"session_rows"`
 }
 
+// proveJSONRequest is the FFI request for proof generation.
 type proveJSONRequest struct {
 	ABIVersion        uint32 `json:"abi_version"`
 	GuestBinaryBase64 string `json:"guest_binary_base64"`
@@ -165,6 +191,7 @@ type proveJSONRequest struct {
 	VerifyReceipt     bool   `json:"verify_receipt"`
 }
 
+// proveJSONResponse is the FFI response for proof generation.
 type proveJSONResponse struct {
 	ImageID         string `json:"image_id"`
 	JournalBase64   string `json:"journal_base64"`
@@ -174,6 +201,7 @@ type proveJSONResponse struct {
 	SealBytes       uint64 `json:"seal_bytes"`
 }
 
+// verifyJSONRequest is the FFI request for receipt verification.
 type verifyJSONRequest struct {
 	ABIVersion             uint32 `json:"abi_version"`
 	ReceiptBase64          string `json:"receipt_base64"`
@@ -182,6 +210,7 @@ type verifyJSONRequest struct {
 	ExpectedJournalBase64  string `json:"expected_journal_base64"`
 }
 
+// verifyJSONResponse is the FFI response for receipt verification.
 type verifyJSONResponse struct {
 	Verified        bool   `json:"verified"`
 	JournalBase64   string `json:"journal_base64"`
@@ -189,6 +218,11 @@ type verifyJSONResponse struct {
 	SealBytes       uint64 `json:"seal_bytes"`
 }
 
+// loadFFILibrary loads the Rust shared library via dlopen and resolves all
+// exported function pointers. It is guarded by loadMu and will only load
+// once; subsequent calls with the same path are no-ops, while calls with a
+// different path return an error. After loading, it checks the ABI version
+// reported by the library against the expected abiVersion constant.
 func loadFFILibrary(path string) error {
 	loadMu.Lock()
 	defer loadMu.Unlock()
@@ -374,11 +408,18 @@ func (c *Client) Verify(req VerifyRequest) (*VerifyResult, error) {
 	}, nil
 }
 
+// ffiInvoker is the Go function signature that wraps a C ABI FFI call. Each
+// of the ffiCallXxx functions below satisfies this type so they can be passed
+// to the generic callJSON helper.
 type ffiInvoker func(
 	reqPtr *C.uint8_t, reqLen C.size_t, outPtr **C.uint8_t,
 	outLen *C.size_t,
 ) C.int32_t
 
+// callJSON is the generic JSON-over-FFI call pattern. It marshals the
+// request to JSON, invokes the FFI function, copies the response bytes into
+// Go-managed memory (freeing the Rust allocation), and unmarshals the JSON
+// response into the provided result struct.
 func callJSON[TReq any, TResp any](
 	op string, fn ffiInvoker, req TReq, resp *TResp,
 ) error {
@@ -411,6 +452,9 @@ func callJSON[TReq any, TResp any](
 	return nil
 }
 
+// bytesPtr returns a C pointer to the first byte of the slice, or nil if
+// the slice is empty. The caller must keep the slice alive for the duration
+// of the C call.
 func bytesPtr(b []byte) *C.uint8_t {
 	if len(b) == 0 {
 		return nil
@@ -419,6 +463,9 @@ func bytesPtr(b []byte) *C.uint8_t {
 	return (*C.uint8_t)(unsafe.Pointer(&b[0]))
 }
 
+// copyAndFree copies Rust-allocated bytes into a Go-managed slice and then
+// frees the Rust allocation via go_zkvm_free_buffer. After this call, the
+// Rust pointer must not be used again.
 func copyAndFree(ptr *C.uint8_t, n C.size_t) []byte {
 	if ptr == nil || n == 0 {
 		if ptr != nil {

@@ -10,6 +10,9 @@ import (
 )
 
 const (
+	// abiVersion is the expected FFI protocol version. The Go side checks
+	// this against the version reported by the loaded Rust shared library
+	// to detect ABI mismatches early.
 	abiVersion = 1
 	// LibraryPathEnvVar is the optional environment variable used to
 	// override the default `host-ffi` shared-library lookup path.
@@ -21,6 +24,7 @@ type Client struct {
 	libraryPath string
 }
 
+// clientConfig holds the resolved construction-time settings for a Client.
 type clientConfig struct {
 	libraryPath string
 }
@@ -28,6 +32,7 @@ type clientConfig struct {
 // ClientOption mutates the construction-time configuration for a host Client.
 type ClientOption func(*clientConfig)
 
+// runConfig holds per-call settings that can be adjusted via RunOption.
 type runConfig struct {
 	logger            *slog.Logger
 	receiptSelfVerify bool
@@ -242,6 +247,10 @@ func ProveFile(
 	}, opts...)
 }
 
+// defaultLibraryPath computes the sibling-layout fallback path for the Rust
+// shared library. It uses runtime.Caller to find the source location of this
+// Go file and then resolves the library path relative to that location:
+// ../host-ffi/target/release/libgo_zkvm_host.{dylib|so}.
 func defaultLibraryPath() string {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -261,6 +270,10 @@ func defaultLibraryPath() string {
 	)
 }
 
+// resolvedLibraryPath applies the library lookup precedence chain:
+//  1. Explicit path (from WithLibraryPath), if non-empty.
+//  2. GO_ZKVM_HOST_LIBRARY_PATH environment variable, if set.
+//  3. Sibling-layout fallback via defaultLibraryPath.
 func resolvedLibraryPath(explicitPath string) string {
 	if strings.TrimSpace(explicitPath) != "" {
 		return explicitPath

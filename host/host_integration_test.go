@@ -1,3 +1,8 @@
+// This file validates the full FFI round trip: load the Rust shared library,
+// compute an image ID, execute a guest, generate a proof, and verify the
+// receipt. It requires both the host-ffi shared library and the simple guest
+// binary to be pre-built.
+
 //go:build cgo
 
 package host
