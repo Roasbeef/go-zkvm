@@ -160,6 +160,10 @@ is still the Rust `risc0-zkvm` stack in both cases.
 
 ## Where To Go Next
 
+- `tutorial.md`
+  - guided walkthrough from first guest to a real proof application
+- `host-api.md`
+  - full Go host API reference: client lifecycle, operations, errors, examples
 - `tinygo-zkvm-target.md`
   - TinyGo fork changes and why they were required
 - `implementation-guide.md`

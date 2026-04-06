@@ -1,14 +1,15 @@
 # Go-Facing Host Boundary Design
 
-Status note:
+This document records the original boundary-design reasoning and the three
+options that were evaluated. The repo now ships the **Option 2 (FFI)** path:
 
-- this started as the pre-implementation design note
-- the repo now has the Option 2 FFI boundary implemented in:
-  - `host/`
-  - `host-core/`
-  - `host-ffi/`
-- `go-guest-host/` remains the reference Rust CLI on top of the same shared
-  Rust host logic
+- `host/` -- typed Go API for execute, prove, and verify
+- `host-core/` -- shared Rust host logic
+- `host-ffi/` -- Rust `cdylib` exposing the stable C ABI
+- `go-guest-host/` -- reference Rust CLI on top of the same shared Rust logic
+
+For the concrete v1 FFI API and ABI contract, see `go-ffi-api-plan.md`.
+For the full host API reference, see `host-api.md`.
 
 ## Short Answer
 
@@ -201,129 +202,44 @@ Cons:
 - process lifecycle and IPC become part of the product
 - overkill for the current repo state
 
-## Recommendation
+## Recommendation (Historical)
 
-The recommended implementation order is:
+The original recommended order was:
 
 1. CLI boundary first
 2. FFI boundary later, only if the CLI path proves too limiting
 3. service boundary only if repeated local proving becomes a major use case
 
-Why CLI first:
+In practice, the FFI path (Option 2) was implemented directly because the
+in-process API was worth the cgo requirement for the intended use cases. The
+CLI boundary still exists as `go-guest-host/` for debugging and reference.
 
-- it reuses the current host logic almost directly
-- it keeps the failure surface easy to inspect
-- it avoids committing to a C ABI too early
-- it gives Go callers an immediate proving interface with minimal risk
+For the concrete Option 2 plan that was implemented, see `go-ffi-api-plan.md`.
 
-For the concrete Option 2 plan that was then implemented, see:
+## Implemented Layout
 
-- `go-ffi-api-plan.md`
-
-## Proposed First-Phase Design
-
-### Rust Side
-
-Create a dedicated Rust host binary in `go-zkvm`, separate from the demo-only
-`bip32-pq-zkp` host.
-
-Suggested shape:
+The actual layout that shipped follows the Option 2 (FFI) path:
 
 ```text
 go-zkvm/
-├── cmd/
-│   └── go-zkvm-host/
-├── hostlib/
-│   └── src/lib.rs
-└── host/
-    └── schema/
+├── host/              # Go API (cgo wrapper)
+│   ├── types.go       # Client, request/response structs, options
+│   ├── ffi_cgo.go     # dlopen/dlsym + JSON-over-buffer FFI calls
+│   └── ffi_nocgo.go   # non-cgo stub with clear error message
+├── host-core/         # Shared Rust host logic
+│   └── src/lib.rs     # execute, prove, verify implementations
+├── host-ffi/          # Rust cdylib boundary
+│   └── src/lib.rs     # 6 exported C ABI functions
+└── go-guest-host/     # Reference Rust CLI (debug/parity)
+    └── src/main.rs
 ```
 
-Suggested responsibilities:
+The Go `host` package is the primary consumer surface. It exposes typed
+request/response structs, byte-oriented APIs (no file paths required), and
+structured `HostError` values with machine-readable codes.
 
-- `hostlib/`
-  - reusable Rust library for:
-    - loading guest binaries
-    - computing image IDs
-    - building `ExecutorEnv`
-    - execute / prove / verify
-    - receipt serialization
-    - journal decoding hooks
-- `cmd/go-zkvm-host/`
-  - stable CLI boundary for Go callers
-
-### Go Side
-
-Add a normal Go package, likely under:
-
-```text
-go-zkvm/host/
-```
-
-This package would:
-
-- define Go request/response structs
-- invoke the Rust CLI
-- map artifacts into Go structs
-- hide temp-file and process details from callers
-
-Example API:
-
-```go
-type ProveRequest struct {
-    GuestBinary string
-    Stdin       []byte
-    ReceiptOut  string
-    MetadataOut string
-}
-
-type ProveResult struct {
-    ImageID    string
-    Journal    []byte
-    SealBytes  int
-    ReceiptRaw []byte
-}
-
-func Prove(ctx context.Context, req ProveRequest) (*ProveResult, error)
-func Verify(ctx context.Context, req VerifyRequest) error
-func Execute(ctx context.Context, req ExecuteRequest) (*ExecuteResult, error)
-```
-
-## Suggested CLI Contract
-
-The first boundary should prefer file/stdin-based contracts over many ad hoc
-flags.
-
-Suggested commands:
-
-- `go-zkvm-host execute`
-- `go-zkvm-host prove`
-- `go-zkvm-host verify`
-
-Suggested inputs:
-
-- `--guest <path>`
-- `--stdin-file <path>` or `--stdin-hex <hex>`
-- `--receipt-out <path>`
-- `--metadata-out <path>`
-- `--receipt-in <path>`
-- `--expected-image-id <hex>`
-
-Suggested metadata JSON:
-
-```json
-{
-  "schema_version": 1,
-  "image_id": "…",
-  "journal_hex": "…",
-  "journal_size_bytes": 72,
-  "proof_seal_bytes": 1797880,
-  "receipt_encoding": "borsh"
-}
-```
-
-The `bip32-pq-zkp` claim JSON is a specialization of this idea for one
-application-level claim format.
+Higher-level repos such as `bip32-pq-zkp` build their own CLI commands on top
+of `github.com/roasbeef/go-zkvm/host`.
 
 ## What This Would Mean For `zkvm`
 
@@ -373,14 +289,15 @@ So a fixed `c-guest` helps as an upstream reference example, but it does not
 eliminate the need for a Go-facing host boundary if we want Go applications to
 drive proving directly.
 
-## Recommended Implementation Steps
+## Implementation Steps (Completed)
 
-1. Extract shared host logic from `go-guest-host/` into a Rust library crate.
-2. Add a stable CLI binary on top of that library.
-3. Add a Go package that wraps the CLI.
-4. Move `bip32-pq-zkp` to consume that shared host wrapper instead of carrying
-   a separate host implementation forever.
-5. Only then evaluate whether an FFI path is worth the extra complexity.
+The steps that were followed:
+
+1. Extracted shared host logic from `go-guest-host/` into `host-core/`.
+2. Kept `go-guest-host/` working on top of `host-core/`.
+3. Added `host-ffi/` with the minimal JSON-over-buffer C ABI.
+4. Added the Go `host/` package with cgo wrappers and `dlopen`/`dlsym`.
+5. Ported `bip32-pq-zkp` to consume `github.com/roasbeef/go-zkvm/host`.
 
 ## Bottom Line
 

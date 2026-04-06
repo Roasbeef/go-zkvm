@@ -16,36 +16,47 @@ reference Rust CLI rather than the primary host integration surface.
 
 1. `../README.md`
    - repo purpose, status, and top-level layout
-2. `go-zkvm-overview.md`
+2. `tutorial.md`
+   - guided walkthrough from first guest to real application (start here if you
+     want to build something)
+3. `go-zkvm-overview.md`
    - end-to-end architecture and the recommended flow
-3. `go-facing-host-boundary.md`
+4. `host-api.md`
+   - full Go host API reference: client lifecycle, operations, options, errors,
+     worked examples
+5. `go-facing-host-boundary.md`
    - the original boundary-design reasoning, plus the current host split after
      implementation
-4. `go-ffi-api-plan.md`
+6. `go-ffi-api-plan.md`
    - the concrete Option 2 FFI API and ABI plan, now updated to match the
      implemented v1 surface
-5. `tinygo-zkvm-target.md`
+7. `tinygo-zkvm-target.md`
    - what had to change in TinyGo to make this work
-6. `implementation-guide.md`
+8. `implementation-guide.md`
    - guest-side Go package, host harness, and packer details
-7. `syscall-architecture.md`
+9. `syscall-architecture.md`
    - where syscalls come from in the legacy and archive-linked models
-8. `journal-digest.md`
-   - why journal output needs a final output digest and how the Go guest does it
-9. `running.md`
-   - practical build, execute, prove, and FFI validation commands, plus the
-     current validated sample outputs
-10. `code-format.md`
-   - the local Go formatting and commenting conventions used for host-side code
+10. `journal-digest.md`
+    - why journal output needs a final output digest and how the Go guest does
+      it
+11. `running.md`
+    - practical build, execute, prove, and FFI validation commands, plus the
+      current validated sample outputs
+12. `code-format.md`
+    - the local Go formatting and commenting conventions used for host-side code
 
 ## Topic Map
 
+- Tutorial:
+  - `tutorial.md`
 - Architecture:
   - `go-zkvm-overview.md`
   - `go-facing-host-boundary.md`
   - `go-ffi-api-plan.md`
   - `tinygo-zkvm-target.md`
   - `syscall-architecture.md`
+- Host API:
+  - `host-api.md`
 - Guest and host implementation:
   - `implementation-guide.md`
   - `ecall-reference.md`

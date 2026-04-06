@@ -188,8 +188,11 @@ type RunOption func(*runConfig)
 
 func WithLogger(logger *slog.Logger) RunOption
 func WithReceiptSelfVerify(enabled bool) RunOption
-func WithExpectedJournal(journal []byte) RunOption
 ```
+
+Note: `WithExpectedJournal` was originally planned as a `RunOption` but was
+implemented as a field on `VerifyRequest` instead, since it only applies to
+verification.
 
 Guidance:
 
@@ -377,6 +380,9 @@ VerifyRequest
 
 VerifyResponse
   verified
+  journal_base64
+  receipt_encoding
+  seal_bytes
 ```
 
 The public Go wrapper should hide this JSON layer entirely.
