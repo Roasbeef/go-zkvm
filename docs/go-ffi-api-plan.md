@@ -1,11 +1,16 @@
 # Go FFI API Plan
 
-This document turns the earlier boundary note into the concrete API and ABI
+This document turned the earlier boundary note into the concrete API and ABI
 plan for the first `cdylib`-backed Go host integration.
 
-The goal here is not to finish the implementation in prose. The goal is to
-freeze the shape of the first usable interface before we write Rust FFI glue
-and Go `cgo` wrappers.
+Status note:
+
+- the v1 shape described here is now implemented in this repo
+- the two notable deltas from the original draft are:
+  - `VerifyResult` now also returns the verified journal bytes plus receipt
+    metadata
+  - the Go side loads the shared library at runtime with `dlopen`/`dlsym`
+    rather than hard-linking it at Go build time
 
 ## Summary
 
@@ -142,7 +147,10 @@ type VerifyRequest struct {
 }
 
 type VerifyResult struct {
-    Verified bool
+    Verified        bool
+    Journal         []byte
+    ReceiptEncoding string
+    SealBytes       uint64
 }
 ```
 

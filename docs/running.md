@@ -84,7 +84,33 @@ To rebuild and validate the currently supported sample set in one pass:
 make verify-samples
 ```
 
-## Execute Without Proving
+That target uses the Rust reference CLI in `go-guest-host/` for the actual
+execute/prove/verify runs. It validates the artifacts inline and prints receipt
+metadata, but it does not persist receipt files by default.
+
+## Build The Go Host FFI Layer
+
+From the `go-zkvm` repo root:
+
+```bash
+make host-ffi
+```
+
+That builds:
+
+```text
+host-ffi/target/release/libgo_zkvm_host.dylib
+```
+
+on macOS, or the corresponding `.so` on Linux.
+
+To validate the typed Go wrapper against the live Rust prover:
+
+```bash
+make test-host-ffi
+```
+
+## Reference CLI: Execute Without Proving
 
 From `go-guest-host/`:
 
@@ -92,7 +118,10 @@ From `go-guest-host/`:
 cargo run --release -- ../simple.bin --raw-journal --execute-only
 ```
 
-## Prove And Verify
+Use this path when you want the Rust reference CLI directly. For normal Go
+integration, prefer the typed `host/` package documented below.
+
+## Reference CLI: Prove And Verify
 
 From `go-guest-host/`:
 
@@ -114,17 +143,52 @@ For the smallest public-output sample, prove `multiply` with:
 cargo run --release -- ../multiply.bin
 ```
 
+## Use The Go Host Package
+
+The supported and preferred host-side Go API is:
+
+```text
+github.com/roasbeef/go-zkvm/host
+```
+
+The package loads the Rust shared library from the default build path, checks
+the ABI version, and then exposes typed `ComputeImageID`, `Execute`, `Prove`,
+and `Verify` methods.
+
+The fastest built-in validation path is:
+
+```bash
+CGO_ENABLED=1 go test ./host -run TestHostFFISimpleGuest -v
+```
+
+That test exercises:
+
+- image ID computation
+- execute-only
+- prove
+- verify
+
+using the same live `simple.bin` artifact and the release-built `host-ffi`
+library.
+
+If you need a receipt on disk, persist `ProveResult.Receipt` yourself from the
+Go API. The reference CLI examples above only print receipt metadata.
+
+The JSON envelope used underneath the `cdylib` boundary is internal only. Guest
+stdin remains raw bytes, the journal remains raw bytes, and receipts remain the
+normal serialized risc0 receipt bytes.
+
 ## Richer Example
 
 `policy_check` is the recommended medium-complexity sample in this repo.
 
-Execute it with the built-in private witness:
+Execute it with the built-in private witness through the reference CLI:
 
 ```bash
 cargo run --release -- ../policy_check.bin --raw-journal --execute-only
 ```
 
-Prove it:
+Prove it through the reference CLI:
 
 ```bash
 cargo run --release -- ../policy_check.bin --raw-journal
@@ -155,15 +219,15 @@ These values come from the current deterministic verification pass using
 for that documented build path.
 
 - `simple`
-  - image ID: `6b8e67cf25a218d47293fb738812157200f764e5ef73aecf416caee01ef62f06`
+  - image ID: `9ac42ea490374af40aa6ca499952a133edb38df51a314b47041bf06576494f2e`
   - raw journal: empty
   - proof seal size: `203016` bytes
 - `multiply`
-  - image ID: `6871e82af736af48471e75a555fe2628ab93cd0245638f797295a1c36eeaf950`
+  - image ID: `db8cb4b1a0a6045cc3e64f1eb6f2927eadd73f33bbceb261b91da1b3068e10f2`
   - public output: `391`
   - proof seal size: `203016` bytes
 - `policy_check`
-  - image ID: `56c9a61a2e23b1b8573d36ae84592169d9f45986e7bb332444e5d2606460477d`
+  - image ID: `78e9677b5db05ea0a2a5de33c54f85d5ba1724364f8f73c150949066753144ac`
   - raw journal: `0300000001000000f5000000000000001400000000000000e100000000000000fa00000000000000`
   - decoded summary:
     - item count `3`

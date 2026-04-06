@@ -6,7 +6,10 @@ It packages the non-Rust guest flow into a reusable set of pieces:
 - a guest-side Go API in `zkvm/`
 - a TinyGo build flow that targets the zkVM memory map
 - an R0BF packer for combining a user ELF with `v1compat.elf`
-- a Rust host harness for execution, proving, and receipt verification
+- host-side proving surfaces:
+  - a primary FFI-backed Go package in `host/`
+  - a Rust reference CLI in `go-guest-host/` for debugging and sample
+    validation
 
 The goal is not “make one demo work”, but “make Go a repeatable guest language
 for risc0”.
@@ -19,6 +22,7 @@ The working path in this repo is the current upstream-aligned lane:
 - risc0 is rebased on current `main` in the sibling `risc0` repo
 - guest builds link against upstream `libzkvm_platform.a`
 - Go guests execute, prove, and verify locally
+- the FFI-backed `host` package now executes, proves, and verifies locally
 - Apple Silicon proving is confirmed to use the Metal-backed prover path
 
 Historical notes on the older handwritten syscall path still exist in `docs/`,
@@ -31,17 +35,17 @@ The current validated sample set is:
 - `simple`
   - execute-only: verified
   - prove+verify: verified
-  - current deterministic image ID: `6b8e67cf25a218d47293fb738812157200f764e5ef73aecf416caee01ef62f06`
+  - current deterministic image ID: `9ac42ea490374af40aa6ca499952a133edb38df51a314b47041bf06576494f2e`
   - current proof seal size: `203016` bytes
 - `multiply`
   - prove+verify: verified
-  - current deterministic image ID: `6871e82af736af48471e75a555fe2628ab93cd0245638f797295a1c36eeaf950`
+  - current deterministic image ID: `db8cb4b1a0a6045cc3e64f1eb6f2927eadd73f33bbceb261b91da1b3068e10f2`
   - committed public output: `391`
   - current proof seal size: `203016` bytes
 - `policy_check`
   - execute-only: verified
   - prove+verify: verified
-  - current deterministic image ID: `56c9a61a2e23b1b8573d36ae84592169d9f45986e7bb332444e5d2606460477d`
+  - current deterministic image ID: `78e9677b5db05ea0a2a5de33c54f85d5ba1724364f8f73c150949066753144ac`
   - current proof seal size: `203016` bytes
   - built-in public summary:
     - item count `3`
@@ -60,16 +64,26 @@ The current validated sample set is:
   - `zkvm/sha256_proper.go` is still required on the archive-linked lane
     because the Go guest must build the final `risc0.Output` digest before
     calling `sys_halt`
-- `simple/`
-  - smallest “hello world” guest
-- `multiply/`
-  - minimal witness-in, public-result-out example
-- `policy_check/`
-  - richer structured-witness example that feeds multiple private values from
-    the Rust host and commits a small public policy summary
+- `examples/`
+  - `examples/simple/`
+    - smallest “hello world” guest
+  - `examples/multiply/`
+    - minimal witness-in, public-result-out example
+  - `examples/policy_check/`
+    - richer structured-witness example that feeds multiple private values from
+      the host and commits a small public policy summary
+- `host/`
+  - typed Go host API for `ComputeImageID`, `Execute`, `Prove`, and `Verify`
+  - loads the Rust proving engine through the `host-ffi` shared library
+- `host-core/`
+  - shared Rust host logic used by both the FFI layer and the reference CLI
+- `host-ffi/`
+  - Rust `cdylib` exposing the minimal C ABI used by the Go `host` package
 - `go-guest-host/`
-  - Rust host that loads `.bin` guests, writes private witness data, and
-    executes or proves them
+  - Rust reference CLI that loads `.bin` guests, writes private witness data,
+    and executes or proves them
+  - kept as a debugging and validation surface; not the primary Go-facing host
+    API
 - `convert_to_r0bf.go`
   - packs a TinyGo ELF together with the risc0 `v1compat` kernel ELF
 - `extract_r0bf.go`
@@ -100,7 +114,9 @@ The recommended build path is:
    use `make platform-standalone` for the deterministic published-commit path
 3. compile the Go guest with TinyGo target `zkvm-platform`
 4. pack the guest ELF with `v1compat.elf`
-5. execute or prove it with the Rust host harness
+5. execute or prove it with either:
+   - the Go `host` package
+   - the Rust reference harness
 
 That is the path that produced the current working local proofs.
 
@@ -155,7 +171,18 @@ To rebuild and run the currently supported sample set end to end:
 make verify-samples
 ```
 
-### Execute Without Proving
+That target runs the reference CLI in `go-guest-host/` against the published
+sample guests. It proves and verifies inline, but does not persist receipt
+files by default.
+
+To build and validate the FFI-backed Go host layer:
+
+```bash
+make host-ffi
+make test-host-ffi
+```
+
+### Reference CLI: Execute Without Proving
 
 From `go-guest-host/`:
 
@@ -163,7 +190,10 @@ From `go-guest-host/`:
 cargo run --release -- ../simple.bin --raw-journal --execute-only
 ```
 
-### Prove And Verify
+Use this path when you want the Rust reference CLI directly. For normal Go
+integration, prefer the typed `host/` package shown below.
+
+### Reference CLI: Prove And Verify
 
 From `go-guest-host/`:
 
@@ -173,6 +203,60 @@ cargo run --release -- ../simple.bin --raw-journal
 
 The host computes the image ID, runs the local prover, verifies the receipt,
 and prints the committed journal bytes plus the receipt proof seal size.
+This reference CLI validates the proof inline and prints receipt metadata, but
+does not write a receipt file unless you add that behavior yourself.
+
+## Go Host API
+
+The new host-side Go package is:
+
+```text
+github.com/roasbeef/go-zkvm/host
+```
+
+Minimal prove-and-verify shape:
+
+```go
+guestBinary, err := host.ReadGuestFile("./simple.bin")
+if err != nil {
+	panic(err)
+}
+
+client, err := host.New()
+if err != nil {
+	panic(err)
+}
+defer client.Close()
+
+proveResult, err := client.Prove(host.ProveRequest{
+	GuestBinary: guestBinary,
+})
+if err != nil {
+	panic(err)
+}
+
+verifyResult, err := client.Verify(host.VerifyRequest{
+	Receipt:         proveResult.Receipt,
+	ImageID:         proveResult.ImageID,
+	ExpectedJournal: proveResult.Journal,
+})
+if err != nil {
+	panic(err)
+}
+
+_ = verifyResult
+```
+
+If you want proof artifacts on disk from the Go API, persist
+`proveResult.Receipt` yourself and write any verifier-facing metadata alongside
+it.
+
+Important boundary note:
+
+- the public Go API is typed and byte-oriented
+- the Rust `cdylib` underneath uses a small JSON-over-buffer ABI internally
+- that JSON layer is only the control envelope between Go and Rust
+- it is not part of the guest witness format, journal format, or receipt format
 
 ## Multiply Example
 
@@ -205,7 +289,7 @@ That is the core model for Go guests:
 3. commit only the public claim material
 4. halt with the final output digest
 
-Prove it from `go-guest-host/` with:
+Prove it from the reference CLI in `go-guest-host/` with:
 
 ```bash
 cargo run --release -- ../multiply.bin
@@ -214,7 +298,7 @@ cargo run --release -- ../multiply.bin
 ## Policy Check Example
 
 `policy_check` is the more complete “how the pieces fit together” sample in
-this repo. The Rust host writes:
+this repo. The host writes:
 
 - a private item count
 - a private list of item values

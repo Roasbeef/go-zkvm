@@ -29,9 +29,22 @@ In practice, the two most important files are:
   - the journal/output digest machinery that is still required even on the
     archive-linked lane
 
-### `go-guest-host/`
+### Host Side
 
-This is the Rust side of the integration. It is responsible for:
+The host side is now split into four pieces:
+
+- `host/`
+  - the typed Go API
+  - the primary consumer-facing host surface
+- `host-core/`
+  - shared Rust host logic
+- `host-ffi/`
+  - the Rust `cdylib` boundary used by the Go package
+- `go-guest-host/`
+  - the Rust reference CLI over the same shared Rust logic
+  - retained for debugging and the sample validation targets
+
+Taken together, that host layer is responsible for:
 
 - reading the packaged guest binary
 - computing the image ID
@@ -76,7 +89,7 @@ That maps directly onto the proof model:
 - guest computation is constrained by the zkVM
 - journal commits are public claim material
 
-## Why The Rust Host Exists
+## Why The Host Layer Exists
 
 For toy programs, it can look like an extra layer. It is not optional for any
 serious proof flow.
@@ -90,6 +103,13 @@ The host is where we:
 
 For the BIP-32/Taproot demo, this is the layer that writes the private seed and
 path into guest stdin and verifies the resulting receipt locally.
+
+Today that control plane can be driven either from Go through `host/` or from
+Rust through `go-guest-host/`, but the proving implementation underneath
+remains the Rust risc0 stack in both cases.
+
+In normal integrations, prefer `host/`. Reach for `go-guest-host/` when you
+want a direct Rust-side reference CLI for debugging or parity checks.
 
 Today, that “exact built artifact” wording still matters, but the recommended
 path is now the deterministic one: build the archive with
@@ -134,7 +154,7 @@ At a high level, the final binary looks like:
 [R0BF header][user ELF bytes][kernel ELF bytes]
 ```
 
-The Rust host then treats that packaged file as the guest image.
+The host layer then treats that packaged file as the guest image.
 
 ## Current Recommended Extension Strategy
 
@@ -160,7 +180,7 @@ go run ./extract_r0bf.go ./simple.bin
 This is useful when you need to inspect whether the expected user/kernel halves
 made it into the final binary.
 
-### Execute Without Proving First
+### Reference CLI: Execute Without Proving First
 
 ```bash
 cd go-guest-host

@@ -30,7 +30,9 @@ convert_to_r0bf.go + v1compat.elf
 R0BF guest binary
     │
     ▼
-Rust host (execute / prove / verify)
+Host layer:
+  - primary Go `host` package via `host-ffi`
+  - optional Rust `go-guest-host` reference CLI
 ```
 
 ## Component Roles
@@ -73,9 +75,21 @@ contains:
 `convert_to_r0bf.go` packs those halves into the R0BF format used by the
 current workflow.
 
-### `go-guest-host/`
+### Host Surfaces
 
-The Rust host is the proving-side control plane. It:
+This repo now exposes the proving-side control plane in two forms:
+
+- `host/`
+  - typed Go API for `ComputeImageID`, `Execute`, `Prove`, and `Verify`
+  - the primary consumer-facing host surface
+- `host-core/` + `host-ffi/`
+  - shared Rust host logic plus the `cdylib` boundary used by the Go package
+- `go-guest-host/`
+  - Rust reference CLI over the same shared Rust logic
+  - retained for debugging, parity checks, and the built-in sample validation
+    target
+
+Those host surfaces are responsible for:
 
 - loads the guest binary
 - computes the image ID
@@ -84,7 +98,7 @@ The Rust host is the proving-side control plane. It:
 - verifies the receipt
 - prints the committed journal bytes
 
-For any real private-input proof, this host layer is required.
+For any real private-input proof, one of these host layers is required.
 
 ## Legacy Path vs Current Path
 
@@ -137,6 +151,10 @@ must:
 - build the `ExecutorEnv`
 - drive execution/proving
 - verify the receipt against the expected image ID
+
+In the current repo state, that host requirement is now satisfied either by the
+FFI-backed Go package or by the Rust reference CLI. The proving engine itself
+is still the Rust `risc0-zkvm` stack in both cases.
 
 ## Where To Go Next
 

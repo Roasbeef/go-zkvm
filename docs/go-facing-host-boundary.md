@@ -1,5 +1,15 @@
 # Go-Facing Host Boundary Design
 
+Status note:
+
+- this started as the pre-implementation design note
+- the repo now has the Option 2 FFI boundary implemented in:
+  - `host/`
+  - `host-core/`
+  - `host-ffi/`
+- `go-guest-host/` remains the reference Rust CLI on top of the same shared
+  Rust host logic
+
 ## Short Answer
 
 If we wrap the current Rust host behind a Go CLI, FFI, or service boundary,
@@ -47,8 +57,15 @@ The current host responsibilities are:
 - verify the receipt
 - decode journal output
 
-That control plane currently lives in `go-guest-host/` and in
-`bip32-pq-zkp/host/`.
+That control plane now lives in:
+
+- `host/`
+- `host-core/`
+- `host-ffi/`
+- `go-guest-host/`
+
+and higher-level repos such as `bip32-pq-zkp` can build their own Go-facing
+commands on top of `github.com/roasbeef/go-zkvm/host`.
 
 ## Goal
 
@@ -199,7 +216,7 @@ Why CLI first:
 - it avoids committing to a C ABI too early
 - it gives Go callers an immediate proving interface with minimal risk
 
-For the concrete Option 2 plan we want to build next, see:
+For the concrete Option 2 plan that was then implemented, see:
 
 - `go-ffi-api-plan.md`
 

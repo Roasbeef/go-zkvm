@@ -8,6 +8,10 @@ commands. The main distinction to keep in mind while reading is:
 
 Most of the repo is now organized around the second model.
 
+For consumer-facing usage, prefer the repo `README.md`, `running.md`, and the
+Go `host/` package. `go-guest-host/` is still documented here, but as the
+reference Rust CLI rather than the primary host integration surface.
+
 ## Recommended Reading Order
 
 1. `../README.md`
@@ -15,10 +19,11 @@ Most of the repo is now organized around the second model.
 2. `go-zkvm-overview.md`
    - end-to-end architecture and the recommended flow
 3. `go-facing-host-boundary.md`
-   - what it would take to expose proving to Go callers without pretending the
-     prover itself is pure Go
+   - the original boundary-design reasoning, plus the current host split after
+     implementation
 4. `go-ffi-api-plan.md`
-   - the concrete Option 2 FFI API and ABI plan before implementation
+   - the concrete Option 2 FFI API and ABI plan, now updated to match the
+     implemented v1 surface
 5. `tinygo-zkvm-target.md`
    - what had to change in TinyGo to make this work
 6. `implementation-guide.md`
@@ -28,8 +33,10 @@ Most of the repo is now organized around the second model.
 8. `journal-digest.md`
    - why journal output needs a final output digest and how the Go guest does it
 9. `running.md`
-   - practical build, execute, and prove commands, plus the current validated
-     sample outputs
+   - practical build, execute, prove, and FFI validation commands, plus the
+     current validated sample outputs
+10. `code-format.md`
+   - the local Go formatting and commenting conventions used for host-side code
 
 ## Topic Map
 
@@ -47,3 +54,4 @@ Most of the repo is now organized around the second model.
   - `static-library-approach.md`
 - Runbooks:
   - `running.md`
+  - `code-format.md`
