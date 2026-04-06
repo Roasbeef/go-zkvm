@@ -14,6 +14,7 @@ const (
 	// this against the version reported by the loaded Rust shared library
 	// to detect ABI mismatches early.
 	abiVersion = 1
+
 	// LibraryPathEnvVar is the optional environment variable used to
 	// override the default `host-ffi` shared-library lookup path.
 	LibraryPathEnvVar = "GO_ZKVM_HOST_LIBRARY_PATH"
@@ -45,6 +46,7 @@ type RunOption func(*runConfig)
 type ExecuteRequest struct {
 	// GuestBinary is the packaged guest `.bin` artifact to execute.
 	GuestBinary []byte
+
 	// Stdin is the raw private witness stream fed into guest stdin.
 	Stdin []byte
 }
@@ -53,12 +55,16 @@ type ExecuteRequest struct {
 type ExecuteResult struct {
 	// ImageID is the computed image ID for the loaded guest.
 	ImageID string
+
 	// Journal is the raw committed public journal.
 	Journal []byte
+
 	// ExitCode is the guest exit summary reported by the executor.
 	ExitCode string
+
 	// SegmentCount is the number of zkVM segments executed.
 	SegmentCount uint32
+
 	// SessionRows is the total row count reported by the session.
 	SessionRows uint64
 }
@@ -67,6 +73,7 @@ type ExecuteResult struct {
 type ProveRequest struct {
 	// GuestBinary is the packaged guest `.bin` artifact to prove.
 	GuestBinary []byte
+
 	// Stdin is the raw private witness stream fed into guest stdin.
 	Stdin []byte
 }
@@ -75,14 +82,19 @@ type ProveRequest struct {
 type ProveResult struct {
 	// ImageID is the computed image ID for the loaded guest.
 	ImageID string
+
 	// Journal is the raw committed public journal.
 	Journal []byte
+
 	// Receipt is the serialized risc0 receipt bytes.
 	Receipt []byte
+
 	// ReceiptEncoding names the serialized receipt encoding.
 	ReceiptEncoding string
+
 	// ProverName identifies the selected proving backend.
 	ProverName string
+
 	// SealBytes is the proof seal size in bytes.
 	SealBytes uint64
 }
@@ -91,8 +103,10 @@ type ProveResult struct {
 type VerifyRequest struct {
 	// Receipt is the serialized receipt bytes to verify.
 	Receipt []byte
+
 	// ImageID is the expected guest image ID.
 	ImageID string
+
 	// ExpectedJournal optionally checks the committed journal bytes too.
 	ExpectedJournal []byte
 }
@@ -101,10 +115,13 @@ type VerifyRequest struct {
 type VerifyResult struct {
 	// Verified reports whether verification succeeded.
 	Verified bool
+
 	// Journal is the verified raw committed public journal.
 	Journal []byte
+
 	// ReceiptEncoding names the serialized receipt encoding.
 	ReceiptEncoding string
+
 	// SealBytes is the proof seal size in bytes.
 	SealBytes uint64
 }
@@ -113,8 +130,10 @@ type VerifyResult struct {
 type HostError struct {
 	// Op identifies the host operation that failed.
 	Op string
+
 	// Code is the stable machine-readable error code when available.
 	Code string
+
 	// Message is the human-readable failure detail.
 	Message string
 }
