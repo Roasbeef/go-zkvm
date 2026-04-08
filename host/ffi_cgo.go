@@ -7,7 +7,8 @@
 // buffers with base64-encoded binary payloads.
 //
 // Memory ownership rules:
-//   - Go owns all request buffers; Rust borrows them only for the call duration.
+//   - Go owns all request buffers; Rust borrows them only for the
+//     call duration.
 //   - Rust allocates response buffers; Go copies them into Go-managed memory
 //     and then calls go_zkvm_free_buffer to release the Rust allocation.
 //   - Never call C.free on Rust-allocated memory.
@@ -189,6 +190,7 @@ type proveJSONRequest struct {
 	GuestBinaryBase64 string `json:"guest_binary_base64"`
 	StdinBase64       string `json:"stdin_base64"`
 	VerifyReceipt     bool   `json:"verify_receipt"`
+	ReceiptKind       string `json:"receipt_kind"`
 }
 
 // proveJSONResponse is the FFI response for proof generation.
@@ -197,6 +199,7 @@ type proveJSONResponse struct {
 	JournalBase64   string `json:"journal_base64"`
 	ReceiptBase64   string `json:"receipt_base64"`
 	ReceiptEncoding string `json:"receipt_encoding"`
+	ReceiptKind     string `json:"receipt_kind"`
 	ProverName      string `json:"prover_name"`
 	SealBytes       uint64 `json:"seal_bytes"`
 }
@@ -215,6 +218,7 @@ type verifyJSONResponse struct {
 	Verified        bool   `json:"verified"`
 	JournalBase64   string `json:"journal_base64"`
 	ReceiptEncoding string `json:"receipt_encoding"`
+	ReceiptKind     string `json:"receipt_kind"`
 	SealBytes       uint64 `json:"seal_bytes"`
 }
 
@@ -334,6 +338,13 @@ func (c *Client) Prove(
 
 	logRun(cfg.logger, "prove", len(req.GuestBinary), len(req.Stdin))
 
+	if !isValidProveReceiptKind(cfg.receiptKind) {
+		return nil, fmt.Errorf(
+			"host: unsupported prove receipt kind %q",
+			cfg.receiptKind,
+		)
+	}
+
 	jsonReq := proveJSONRequest{
 		ABIVersion: abiVersion,
 		GuestBinaryBase64: base64.StdEncoding.EncodeToString(
@@ -341,6 +352,7 @@ func (c *Client) Prove(
 		),
 		StdinBase64:   base64.StdEncoding.EncodeToString(req.Stdin),
 		VerifyReceipt: cfg.receiptSelfVerify,
+		ReceiptKind:   string(cfg.receiptKind),
 	}
 
 	var resp proveJSONResponse
@@ -365,6 +377,7 @@ func (c *Client) Prove(
 		Journal:         journal,
 		Receipt:         receipt,
 		ReceiptEncoding: resp.ReceiptEncoding,
+		ReceiptKind:     ReceiptKind(resp.ReceiptKind),
 		ProverName:      resp.ProverName,
 		SealBytes:       resp.SealBytes,
 	}, nil
@@ -404,8 +417,18 @@ func (c *Client) Verify(req VerifyRequest) (*VerifyResult, error) {
 		Verified:        resp.Verified,
 		Journal:         journal,
 		ReceiptEncoding: resp.ReceiptEncoding,
+		ReceiptKind:     ReceiptKind(resp.ReceiptKind),
 		SealBytes:       resp.SealBytes,
 	}, nil
+}
+
+func isValidProveReceiptKind(kind ReceiptKind) bool {
+	switch kind {
+	case ReceiptKindComposite, ReceiptKindSuccinct:
+		return true
+	default:
+		return false
+	}
 }
 
 // ffiInvoker is the Go function signature that wraps a C ABI FFI call. Each
