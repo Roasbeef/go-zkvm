@@ -20,6 +20,30 @@ const (
 	LibraryPathEnvVar = "GO_ZKVM_HOST_LIBRARY_PATH"
 )
 
+// ReceiptKind selects the minimum prove-time compression level requested
+// from the Rust host prover.
+type ReceiptKind string
+
+const (
+	// ReceiptKindComposite requests a composite receipt. This is the
+	// default prove path and tends to be fastest to produce, but its size
+	// grows with the execution.
+	ReceiptKindComposite ReceiptKind = "composite"
+
+	// ReceiptKindSuccinct requests a recursively compressed STARK receipt.
+	// This is typically much smaller than a composite receipt, but may take
+	// longer to generate.
+	ReceiptKindSuccinct ReceiptKind = "succinct"
+
+	// ReceiptKindGroth16 may appear when inspecting externally produced
+	// receipts, though the current prove API does not request it.
+	ReceiptKindGroth16 ReceiptKind = "groth16"
+
+	// ReceiptKindFake identifies dev-mode fake receipts with no
+	// cryptographic security.
+	ReceiptKindFake ReceiptKind = "fake"
+)
+
 // Client is the Go-facing wrapper around the Rust host FFI boundary.
 type Client struct {
 	libraryPath string
@@ -37,6 +61,7 @@ type ClientOption func(*clientConfig)
 type runConfig struct {
 	logger            *slog.Logger
 	receiptSelfVerify bool
+	receiptKind       ReceiptKind
 }
 
 // RunOption mutates per-call execution or proving behavior.
@@ -92,6 +117,10 @@ type ProveResult struct {
 	// ReceiptEncoding names the serialized receipt encoding.
 	ReceiptEncoding string
 
+	// ReceiptKind identifies the concrete receipt representation returned
+	// by the prover.
+	ReceiptKind ReceiptKind
+
 	// ProverName identifies the selected proving backend.
 	ProverName string
 
@@ -121,6 +150,10 @@ type VerifyResult struct {
 
 	// ReceiptEncoding names the serialized receipt encoding.
 	ReceiptEncoding string
+
+	// ReceiptKind identifies the concrete receipt representation that
+	// was verified.
+	ReceiptKind ReceiptKind
 
 	// SealBytes is the proof seal size in bytes.
 	SealBytes uint64
@@ -168,6 +201,14 @@ func WithLogger(logger *slog.Logger) RunOption {
 func WithReceiptSelfVerify(enabled bool) RunOption {
 	return func(cfg *runConfig) {
 		cfg.receiptSelfVerify = enabled
+	}
+}
+
+// WithReceiptKind selects the minimum receipt compression level requested for
+// Prove. The default is ReceiptKindComposite.
+func WithReceiptKind(kind ReceiptKind) RunOption {
+	return func(cfg *runConfig) {
+		cfg.receiptKind = kind
 	}
 }
 
@@ -310,5 +351,6 @@ func resolvedLibraryPath(explicitPath string) string {
 func defaultRunConfig() runConfig {
 	return runConfig{
 		receiptSelfVerify: true,
+		receiptKind:       ReceiptKindComposite,
 	}
 }
