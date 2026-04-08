@@ -134,6 +134,13 @@ From `go-guest-host/`:
 cargo run --release -- ../simple.bin --raw-journal
 ```
 
+To request a recursively compressed receipt instead of the default composite
+receipt:
+
+```bash
+cargo run --release -- ../simple.bin --raw-journal --receipt-kind succinct
+```
+
 The host will:
 
 - compute the image ID
@@ -141,6 +148,7 @@ The host will:
 - verify the receipt
 - print the committed journal bytes
 - print the receipt proof seal size
+- print the concrete receipt kind that was returned
 
 The current validated lane for this repo is local proving.
 

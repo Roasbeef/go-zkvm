@@ -113,12 +113,17 @@ func (c *Client) Prove(req ProveRequest, opts ...RunOption) (*ProveResult, error
 
 Runs the guest program and generates a STARK proof. The result includes a
 serialized receipt that any party can verify without access to the private
-witness. On Apple Silicon hosts, the Rust prover may use Metal GPU acceleration
-transparently.
+witness. On Apple Silicon hosts, the current validated local proving lane may
+use Metal GPU acceleration transparently.
 
 By default, `Prove` performs a Rust-side self-verification of the generated
 receipt before returning. This catches prover bugs early at the cost of a small
 amount of extra time. Disable this with `WithReceiptSelfVerify(false)`.
+
+`Prove` defaults to `ReceiptKindComposite`. Callers can request a recursively
+compressed STARK receipt instead with `WithReceiptKind(ReceiptKindSuccinct)`.
+That usually reduces receipt size significantly, but it adds extra proving work
+up front.
 
 **Parameters:**
 
@@ -217,6 +222,7 @@ type ProveResult struct {
     Journal         []byte
     Receipt         []byte
     ReceiptEncoding string
+    ReceiptKind     ReceiptKind
     ProverName      string
     SealBytes       uint64
 }
@@ -227,7 +233,8 @@ type ProveResult struct {
 | `ImageID`         | `string` | Hex-encoded image ID of the loaded guest. |
 | `Journal`         | `[]byte` | Raw bytes committed to the public journal. |
 | `Receipt`         | `[]byte` | Serialized risc0 receipt. Pass this to `Verify`. |
-| `ReceiptEncoding` | `string` | Name of the encoding used for the receipt (e.g. `"bincode"`). |
+| `ReceiptEncoding` | `string` | Name of the encoding used for the receipt (currently `"borsh"` on the documented lane). |
+| `ReceiptKind`     | `ReceiptKind` | Concrete receipt representation returned by the prover, such as `composite` or `succinct`. |
 | `ProverName`      | `string` | Identifies the proving backend that was selected (e.g. `"local"`). |
 | `SealBytes`       | `uint64` | Size of the proof seal portion in bytes. |
 
@@ -257,6 +264,7 @@ type VerifyResult struct {
     Verified        bool
     Journal         []byte
     ReceiptEncoding string
+    ReceiptKind     ReceiptKind
     SealBytes       uint64
 }
 ```
@@ -266,6 +274,7 @@ type VerifyResult struct {
 | `Verified`        | `bool`   | `true` if the receipt passed all checks. |
 | `Journal`         | `[]byte` | The journal extracted from the verified receipt. |
 | `ReceiptEncoding` | `string` | Encoding of the receipt that was verified. |
+| `ReceiptKind`     | `ReceiptKind` | Concrete receipt representation that was verified. |
 | `SealBytes`       | `uint64` | Size of the proof seal in bytes. |
 
 ---
@@ -366,6 +375,18 @@ Controls whether `Prove` asks the Rust side to verify the receipt immediately
 after generating it. Defaults to `true`. Set to `false` to skip the self-check
 when you plan to verify separately or need to shave a few seconds off the
 proving path.
+
+#### WithReceiptKind
+
+```go
+func WithReceiptKind(kind ReceiptKind) RunOption
+```
+
+Selects the minimum receipt compression level requested for `Prove`.
+`ReceiptKindComposite` is the default. `ReceiptKindSuccinct` asks the Rust
+prover to return a recursively compressed STARK receipt instead. Verification
+works the same way for both; the receipt kind is reported back in
+`ProveResult` and `VerifyResult`.
 
 ---
 

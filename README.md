@@ -37,7 +37,7 @@ defer client.Close()
 result, _ := client.Prove(host.ProveRequest{
     GuestBinary: guest,
     Stdin:       witnessBytes,
-})
+}, host.WithReceiptKind(host.ReceiptKindSuccinct))
 
 verified, _ := client.Verify(host.VerifyRequest{
     Receipt:         result.Receipt,
@@ -124,6 +124,8 @@ The working path in this repo is the current upstream-aligned lane:
 - guest builds link against upstream `libzkvm_platform.a`
 - Go guests execute, prove, and verify locally
 - the FFI-backed `host` package now executes, proves, and verifies locally
+- `host.Prove` defaults to composite receipts and also supports optional
+  succinct receipts through `WithReceiptKind`
 - Apple Silicon proving is confirmed to use the Metal-backed prover path
 
 Historical notes on the older handwritten syscall path still exist in `docs/`,
