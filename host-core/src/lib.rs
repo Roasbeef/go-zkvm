@@ -1,11 +1,34 @@
 use borsh::{to_vec, BorshDeserialize};
 use hex::FromHex;
 use risc0_zkvm::{
-    compute_image_id, default_executor, default_prover, Digest, ExecutorEnv, Receipt,
+    compute_image_id, default_executor, default_prover, Digest, ExecutorEnv, Prover, ProverOpts,
+    Receipt,
 };
 use thiserror::Error;
 
 pub const RECEIPT_ENCODING_BORSH: &str = "borsh";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProveReceiptKind {
+    Composite,
+    Succinct,
+}
+
+impl ProveReceiptKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Composite => "composite",
+            Self::Succinct => "succinct",
+        }
+    }
+
+    fn prover_opts(&self) -> ProverOpts {
+        match self {
+            Self::Composite => ProverOpts::composite(),
+            Self::Succinct => ProverOpts::succinct(),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ExecuteRequest {
@@ -27,6 +50,7 @@ pub struct ProveRequest {
     pub guest_binary: Vec<u8>,
     pub stdin: Vec<u8>,
     pub verify_receipt: bool,
+    pub receipt_kind: ProveReceiptKind,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +59,7 @@ pub struct ProveResult {
     pub journal: Vec<u8>,
     pub receipt: Vec<u8>,
     pub receipt_encoding: String,
+    pub receipt_kind: String,
     pub prover_name: String,
     pub seal_bytes: u64,
 }
@@ -51,6 +76,7 @@ pub struct VerifyResult {
     pub verified: bool,
     pub journal: Vec<u8>,
     pub receipt_encoding: String,
+    pub receipt_kind: String,
     pub seal_bytes: u64,
 }
 
@@ -125,10 +151,12 @@ pub fn prove(req: ProveRequest) -> Result<ProveResult, HostError> {
     let env = build_env(&req.stdin)?;
     let prover = default_prover();
     let prover_name = prover.get_name().to_string();
+    let opts = req.receipt_kind.prover_opts();
     let prove_info = prover
-        .prove(env, &req.guest_binary)
+        .prove_with_opts(env, &req.guest_binary, &opts)
         .map_err(|err| HostError::ProveFailed(format!("{err:#}")))?;
     let receipt = prove_info.receipt;
+    let receipt_kind = receipt_kind_name(&receipt).to_string();
 
     if req.verify_receipt {
         receipt
@@ -144,6 +172,7 @@ pub fn prove(req: ProveRequest) -> Result<ProveResult, HostError> {
         journal: receipt.journal.bytes.to_vec(),
         receipt: receipt_bytes,
         receipt_encoding: RECEIPT_ENCODING_BORSH.to_string(),
+        receipt_kind,
         prover_name,
         seal_bytes: receipt.seal_size() as u64,
     })
@@ -173,8 +202,19 @@ pub fn verify(req: VerifyRequest) -> Result<VerifyResult, HostError> {
         verified: true,
         journal: actual_journal,
         receipt_encoding: RECEIPT_ENCODING_BORSH.to_string(),
+        receipt_kind: receipt_kind_name(&receipt).to_string(),
         seal_bytes: receipt.seal_size() as u64,
     })
+}
+
+fn receipt_kind_name(receipt: &Receipt) -> &'static str {
+    match &receipt.inner {
+        risc0_zkvm::InnerReceipt::Composite(_) => "composite",
+        risc0_zkvm::InnerReceipt::Succinct(_) => "succinct",
+        risc0_zkvm::InnerReceipt::Groth16(_) => "groth16",
+        risc0_zkvm::InnerReceipt::Fake(_) => "fake",
+        _ => "unknown",
+    }
 }
 
 fn build_env(stdin: &[u8]) -> Result<ExecutorEnv<'static>, HostError> {
