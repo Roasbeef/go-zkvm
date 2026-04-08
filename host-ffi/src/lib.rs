@@ -6,7 +6,7 @@ use std::{
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use host_core::{
     compute_image_id_hex, execute as host_execute, prove as host_prove, verify as host_verify,
-    ExecuteRequest, HostError, ProveRequest, VerifyRequest,
+    ExecuteRequest, HostError, ProveReceiptKind, ProveRequest, VerifyRequest,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
@@ -51,6 +51,7 @@ struct ProveJsonRequest {
     guest_binary_base64: String,
     stdin_base64: String,
     verify_receipt: bool,
+    receipt_kind: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,6 +60,7 @@ struct ProveJsonResponse {
     journal_base64: String,
     receipt_base64: String,
     receipt_encoding: String,
+    receipt_kind: String,
     prover_name: String,
     seal_bytes: u64,
 }
@@ -77,6 +79,7 @@ struct VerifyJsonResponse {
     verified: bool,
     journal_base64: String,
     receipt_encoding: String,
+    receipt_kind: String,
     seal_bytes: u64,
 }
 
@@ -145,10 +148,12 @@ pub extern "C" fn go_zkvm_prove(
 
         let guest_binary = decode_base64("guest_binary_base64", &req.guest_binary_base64)?;
         let stdin = decode_base64("stdin_base64", &req.stdin_base64)?;
+        let receipt_kind = parse_prove_receipt_kind(&req.receipt_kind)?;
         let result = host_prove(ProveRequest {
             guest_binary,
             stdin,
             verify_receipt: req.verify_receipt,
+            receipt_kind,
         })
         .map_err(error_from_host)?;
 
@@ -157,6 +162,7 @@ pub extern "C" fn go_zkvm_prove(
             journal_base64: encode_base64(&result.journal),
             receipt_base64: encode_base64(&result.receipt),
             receipt_encoding: result.receipt_encoding,
+            receipt_kind: result.receipt_kind,
             prover_name: result.prover_name,
             seal_bytes: result.seal_bytes,
         })
@@ -195,6 +201,7 @@ pub extern "C" fn go_zkvm_verify(
             verified: result.verified,
             journal_base64: encode_base64(&result.journal),
             receipt_encoding: result.receipt_encoding,
+            receipt_kind: result.receipt_kind,
             seal_bytes: result.seal_bytes,
         })
     })
@@ -303,6 +310,16 @@ fn decode_base64(field: &str, value: &str) -> Result<Vec<u8>, ErrorResponse> {
 
 fn encode_base64(bytes: &[u8]) -> String {
     STANDARD.encode(bytes)
+}
+
+fn parse_prove_receipt_kind(value: &str) -> Result<ProveReceiptKind, ErrorResponse> {
+    match value {
+        "composite" => Ok(ProveReceiptKind::Composite),
+        "succinct" => Ok(ProveReceiptKind::Succinct),
+        other => Err(invalid_request(format!(
+            "unsupported receipt_kind `{other}`; expected composite or succinct"
+        ))),
+    }
 }
 
 fn error_from_host(err: HostError) -> ErrorResponse {
