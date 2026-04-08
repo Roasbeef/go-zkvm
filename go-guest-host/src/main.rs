@@ -1,6 +1,6 @@
 use host_core::{
     compute_image_id_hex, execute as host_execute, prove as host_prove, ExecuteRequest,
-    ProveRequest,
+    ProveReceiptKind, ProveRequest,
 };
 use std::{env, fs};
 
@@ -22,6 +22,14 @@ const DEFAULT_POLICY_ITEMS: [u64; 3] = [120, 45, 80];
 const DEFAULT_POLICY_DISCOUNT: u64 = 20;
 const DEFAULT_POLICY_LIMIT: u64 = 250;
 const POLICY_SUMMARY_LEN: usize = 40;
+
+fn parse_receipt_kind(value: &str) -> ProveReceiptKind {
+    match value {
+        "composite" => ProveReceiptKind::Composite,
+        "succinct" => ProveReceiptKind::Succinct,
+        other => panic!("unsupported --receipt-kind value `{other}`"),
+    }
+}
 
 fn hex(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() * 2);
@@ -264,6 +272,7 @@ fn run() {
     let mut path_spec: Option<String> = None;
     let mut use_test_vector = false;
     let mut require_bip86 = false;
+    let mut receipt_kind = ProveReceiptKind::Composite;
     let mut policy_items: Option<String> = None;
     let mut policy_discount: Option<u64> = None;
     let mut policy_limit: Option<u64> = None;
@@ -277,9 +286,14 @@ fn run() {
             "--execute-only" => execute_only = true,
             "--use-test-vector" => use_test_vector = true,
             "--require-bip86" => require_bip86 = true,
+            "--receipt-kind" => {
+                index += 1;
+                receipt_kind =
+                    parse_receipt_kind(args.get(index).expect("--receipt-kind requires a value"));
+            }
             "--help" | "-h" => {
                 println!(
-                    "usage: cargo run -- [guest.bin] [--raw-journal] [--execute-only] [--seed-hex HEX --path PATH | --use-test-vector] [--require-bip86] [--policy-items CSV] [--policy-discount N] [--policy-limit N]"
+                    "usage: cargo run -- [guest.bin] [--raw-journal] [--execute-only] [--seed-hex HEX --path PATH | --use-test-vector] [--require-bip86] [--receipt-kind composite|succinct] [--policy-items CSV] [--policy-discount N] [--policy-limit N]"
                 );
                 return;
             }
@@ -343,6 +357,9 @@ fn run() {
                         .parse::<u64>()
                         .expect("invalid --policy-limit value"),
                 );
+            }
+            _ if arg.starts_with("--receipt-kind=") => {
+                receipt_kind = parse_receipt_kind(&arg["--receipt-kind=".len()..]);
             }
             _ => guest_path = arg.clone(),
         }
@@ -462,9 +479,11 @@ fn run() {
         guest_binary,
         stdin,
         verify_receipt: true,
+        receipt_kind,
     })
     .expect("Proving failed");
     println!("✓ Using prover backend: {}", prove_result.prover_name);
+    println!("✓ Receipt kind: {}", prove_result.receipt_kind);
     println!("✓ Receipt verified against image ID");
 
     if is_policy_guest(&guest_path) {
