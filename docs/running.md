@@ -169,6 +169,10 @@ github.com/roasbeef/go-zkvm/host
 The package loads the Rust shared library, checks the ABI version, and then
 exposes typed `ComputeImageID`, `Execute`, `Prove`, and `Verify` methods.
 
+For composed guests, `ExecuteRequest` and `ProveRequest` also accept
+`Assumptions []host.AssumptionReceipt`. Those receipts are forwarded into the
+executor so guest-side calls such as `zkvm.Verify(...)` can resolve them.
+
 Library lookup precedence is:
 
 1. `host.WithLibraryPath(...)`
@@ -197,6 +201,9 @@ Go API. The reference CLI examples above only print receipt metadata.
 The JSON envelope used underneath the `cdylib` boundary is internal only. Guest
 stdin remains raw bytes, the journal remains raw bytes, and receipts remain the
 normal serialized risc0 receipt bytes.
+
+For ordinary guests, leave `Assumptions` empty. For recursive composition, the
+assumption receipts must currently be serialized succinct receipts.
 
 ## Richer Example
 

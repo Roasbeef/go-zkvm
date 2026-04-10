@@ -99,6 +99,10 @@ significantly faster than proving because it skips the STARK arithmetic.
 - `req` -- an `ExecuteRequest` specifying the guest binary and private stdin.
 - `opts` -- zero or more `RunOption` values (e.g. `WithLogger`).
 
+If the guest uses recursive composition, `req.Assumptions` carries the prior
+succinct receipts that should be made available through guest-side calls such
+as `zkvm.Verify(...)`.
+
 **Returns:**
 
 - An `*ExecuteResult` containing the image ID, committed journal, exit code,
@@ -129,6 +133,10 @@ up front.
 
 - `req` -- a `ProveRequest` specifying the guest binary and private stdin.
 - `opts` -- zero or more `RunOption` values.
+
+If the guest uses recursive composition, `req.Assumptions` carries the prior
+succinct receipts that should be made available through guest-side calls such
+as `zkvm.Verify(...)`.
 
 **Returns:**
 
@@ -170,6 +178,9 @@ type ExecuteRequest struct {
     GuestBinary []byte
     // Stdin is the raw private witness stream fed into guest stdin.
     Stdin []byte
+    // Assumptions are serialized succinct receipts made available to guest
+    // composition calls such as zkvm.Verify.
+    Assumptions []AssumptionReceipt
 }
 ```
 
@@ -177,6 +188,7 @@ type ExecuteRequest struct {
 |---------------|----------|-------------|
 | `GuestBinary` | `[]byte` | The compiled guest program bytes. Required. |
 | `Stdin`       | `[]byte` | Private witness data delivered to the guest via stdin. May be nil for guests that take no input. |
+| `Assumptions` | `[]AssumptionReceipt` | Optional serialized succinct receipts supplied to guest-side composition calls. Keep this empty for ordinary non-recursive runs. |
 
 ### ExecuteResult
 
@@ -206,6 +218,9 @@ type ProveRequest struct {
     GuestBinary []byte
     // Stdin is the raw private witness stream fed into guest stdin.
     Stdin []byte
+    // Assumptions are serialized succinct receipts made available to guest
+    // composition calls such as zkvm.Verify.
+    Assumptions []AssumptionReceipt
 }
 ```
 
@@ -213,6 +228,7 @@ type ProveRequest struct {
 |---------------|----------|-------------|
 | `GuestBinary` | `[]byte` | The compiled guest program bytes. Required. |
 | `Stdin`       | `[]byte` | Private witness data. May be nil. |
+| `Assumptions` | `[]AssumptionReceipt` | Optional serialized succinct receipts supplied to guest-side composition calls. |
 
 ### ProveResult
 
@@ -479,7 +495,7 @@ The Rust shared library exports six symbols, resolved at runtime via
 
 | Symbol                     | Purpose |
 |----------------------------|---------|
-| `go_zkvm_abi_version`      | Returns the ABI version number (currently `1`). |
+| `go_zkvm_abi_version`      | Returns the ABI version number (currently `2`). |
 | `go_zkvm_compute_image_id` | Computes the image ID for a guest binary. |
 | `go_zkvm_execute`          | Executes a guest without proof generation. |
 | `go_zkvm_prove`            | Executes a guest and generates a STARK proof. |

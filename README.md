@@ -105,7 +105,8 @@ flowchart LR
 ## What This Repo Provides
 
 - `zkvm/`: guest-side Go API: read private input, commit public journal
-  output, journal digest finalization, cycle counting
+  output, journal digest finalization, recursive assumption helpers, cycle
+  counting
 - `host/`: typed Go host API for `ComputeImageID`, `Execute`, `Prove`, and
   `Verify`, backed by the Rust proving engine via FFI
 - `examples/`: three sample guests (simple, multiply, policy_check)
@@ -124,6 +125,9 @@ The working path in this repo is the current upstream-aligned lane:
 - guest builds link against upstream `libzkvm_platform.a`
 - Go guests execute, prove, and verify locally
 - the FFI-backed `host` package now executes, proves, and verifies locally
+- composed guests can register receipt assumptions through `zkvm.Verify(...)`,
+  and the host API can supply succinct assumption receipts on execute/prove
+  runs
 - `host.Prove` defaults to composite receipts and also supports optional
   succinct receipts through `WithReceiptKind`
 - Apple Silicon proving is confirmed to use the Metal-backed prover path

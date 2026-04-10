@@ -32,7 +32,10 @@ risc0.Output(journal_digest, assumptions_digest)
 In the current Go flow:
 
 - `journal_digest` reflects the committed bytes
-- `assumptions_digest` is empty for the current guests
+- `assumptions_digest` is all-zero for ordinary guests that make no recursive
+  assumptions
+- composed guests update it as they register assumptions through guest-side
+  calls such as `zkvm.Verify(...)`
 
 ## Current Implementation Shape
 
@@ -40,6 +43,7 @@ The relevant code lives in:
 
 - `zkvm/zkvm.go`
 - `zkvm/sha256_proper.go`
+- `zkvm/verify.go`
 
 The flow is:
 
@@ -48,6 +52,12 @@ The flow is:
 3. `Halt` finalizes the journal hash
 4. the final tagged output digest is constructed
 5. `sys_halt` receives that digest pointer
+
+For composed guests, there is one extra step:
+
+6. guest-side verification helpers such as `zkvm.Verify(...)` register
+   assumptions with the host and fold those assumptions into the running
+   `assumptions_digest`
 
 ## Why The Platform Archive Does Not Remove This Problem
 
@@ -61,4 +71,5 @@ That is why this logic still lives in `go-zkvm`.
 
 If a guest appears to run correctly but the host shows an empty or unexpected
 journal, inspect the output-digest path before assuming the guest computation is
-wrong.
+wrong. For composed guests, also check that the assumptions digest is being
+updated whenever the guest registers proof assumptions.

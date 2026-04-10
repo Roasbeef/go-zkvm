@@ -624,8 +624,9 @@ func Halt(exitCode uint8) {
 
 2. **Wraps the journal digest in a tagged struct.** The risc0 convention uses
    `taggedStruct("risc0.Output", [journalDigest, assumptionsDigest])` to create
-   the final output digest. The assumptions digest is all-zeros for normal
-   guests (assumptions are a risc0 feature for composing proofs). The tagged
+   the final output digest. The assumptions digest is all-zeros for ordinary
+   guests that do not register proof assumptions. Composed guests update it via
+   helpers such as `zkvm.Verify(...)`. The tagged
    struct convention is:
 
    ```
