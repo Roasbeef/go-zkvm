@@ -34,6 +34,7 @@ impl ProveReceiptKind {
 pub struct ExecuteRequest {
     pub guest_binary: Vec<u8>,
     pub stdin: Vec<u8>,
+    pub assumptions: Vec<Vec<u8>>,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +50,7 @@ pub struct ExecuteResult {
 pub struct ProveRequest {
     pub guest_binary: Vec<u8>,
     pub stdin: Vec<u8>,
+    pub assumptions: Vec<Vec<u8>>,
     pub verify_receipt: bool,
     pub receipt_kind: ProveReceiptKind,
 }
@@ -129,7 +131,7 @@ pub fn compute_image_id_hex(guest_binary: &[u8]) -> Result<String, HostError> {
 
 pub fn execute(req: ExecuteRequest) -> Result<ExecuteResult, HostError> {
     let image_id = compute_image_id_hex(&req.guest_binary)?;
-    let env = build_env(&req.stdin)?;
+    let env = build_env_with_assumptions(&req.stdin, &req.assumptions)?;
     let exec = default_executor();
     let session = exec
         .execute(env, &req.guest_binary)
@@ -148,7 +150,7 @@ pub fn prove(req: ProveRequest) -> Result<ProveResult, HostError> {
     let image_id = compute_image_id(&req.guest_binary)
         .map_err(|err| HostError::InvalidGuestBinary(format!("{err:#}")))?;
     let image_id_hex = image_id.to_string();
-    let env = build_env(&req.stdin)?;
+    let env = build_env_with_assumptions(&req.stdin, &req.assumptions)?;
     let prover = default_prover();
     let prover_name = prover.get_name().to_string();
     let opts = req.receipt_kind.prover_opts();
@@ -217,10 +219,25 @@ fn receipt_kind_name(receipt: &Receipt) -> &'static str {
     }
 }
 
-fn build_env(stdin: &[u8]) -> Result<ExecutorEnv<'static>, HostError> {
+fn build_env_with_assumptions(
+    stdin: &[u8], assumptions: &[Vec<u8>],
+) -> Result<ExecutorEnv<'static>, HostError> {
     let mut builder = ExecutorEnv::builder();
     if !stdin.is_empty() {
         builder.write_slice(stdin);
+    }
+
+    for (idx, assumption_bytes) in assumptions.iter().enumerate() {
+        let receipt = Receipt::try_from_slice(assumption_bytes).map_err(|err| {
+            HostError::InvalidRequest(format!(
+                "decode assumption receipt {idx}: {err:#}"
+            ))
+        })?;
+        builder.add_assumption(receipt).map_err(|err| {
+            HostError::InvalidRequest(format!(
+                "add assumption receipt {idx}: {err:#}"
+            ))
+        })?;
     }
 
     builder

@@ -10,7 +10,7 @@ use host_core::{
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-const ABI_VERSION: u32 = 1;
+const ABI_VERSION: u32 = 2;
 
 #[derive(Debug, Serialize)]
 struct ErrorResponse {
@@ -34,6 +34,7 @@ struct ExecuteJsonRequest {
     abi_version: u32,
     guest_binary_base64: String,
     stdin_base64: String,
+    assumptions_base64: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -50,6 +51,7 @@ struct ProveJsonRequest {
     abi_version: u32,
     guest_binary_base64: String,
     stdin_base64: String,
+    assumptions_base64: Vec<String>,
     verify_receipt: bool,
     receipt_kind: String,
 }
@@ -119,9 +121,11 @@ pub extern "C" fn go_zkvm_execute(
 
         let guest_binary = decode_base64("guest_binary_base64", &req.guest_binary_base64)?;
         let stdin = decode_base64("stdin_base64", &req.stdin_base64)?;
+        let assumptions = decode_base64_vec("assumptions_base64", &req.assumptions_base64)?;
         let result = host_execute(ExecuteRequest {
             guest_binary,
             stdin,
+            assumptions,
         })
         .map_err(error_from_host)?;
 
@@ -148,10 +152,12 @@ pub extern "C" fn go_zkvm_prove(
 
         let guest_binary = decode_base64("guest_binary_base64", &req.guest_binary_base64)?;
         let stdin = decode_base64("stdin_base64", &req.stdin_base64)?;
+        let assumptions = decode_base64_vec("assumptions_base64", &req.assumptions_base64)?;
         let receipt_kind = parse_prove_receipt_kind(&req.receipt_kind)?;
         let result = host_prove(ProveRequest {
             guest_binary,
             stdin,
+            assumptions,
             verify_receipt: req.verify_receipt,
             receipt_kind,
         })
@@ -306,6 +312,14 @@ fn decode_base64(field: &str, value: &str) -> Result<Vec<u8>, ErrorResponse> {
     STANDARD
         .decode(value)
         .map_err(|err| invalid_request(format!("decode {field}: {err}")))
+}
+
+fn decode_base64_vec(field: &str, values: &[String]) -> Result<Vec<Vec<u8>>, ErrorResponse> {
+    values
+        .iter()
+        .enumerate()
+        .map(|(idx, value)| decode_base64(&format!("{field}[{idx}]"), value))
+        .collect()
 }
 
 fn encode_base64(bytes: &[u8]) -> String {

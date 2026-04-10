@@ -91,7 +91,7 @@ lint-native: build-native-linter
 
 lint: lint-native
 
-native-check:
+native-check: host-ffi simple
 	$(GO) build ./convert_to_r0bf.go
 	$(GO) build ./extract_r0bf.go
 	$(GO) build ./host
