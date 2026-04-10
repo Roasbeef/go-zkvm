@@ -33,10 +33,13 @@ reference Rust CLI rather than the primary host integration surface.
 8. `journal-digest.md`
     - why journal output needs a final output digest and how the Go guest does
       it
-9. `running.md`
+9. `recursion-composition.md`
+    - standalone walkthrough of `zkvm.Verify(...)`, assumptions digests, and
+      how the host-side supplied receipts are resolved by recursion
+10. `running.md`
     - practical build, execute, prove, and FFI validation commands, plus the
       current validated sample outputs
-10. `code-format.md`
+11. `code-format.md`
     - the local Go formatting and commenting conventions used for host-side code
 
 ## Topic Map
@@ -54,6 +57,7 @@ reference Rust CLI rather than the primary host integration surface.
   - `ecall-reference.md`
 - Packaging and receipt-visible output:
   - `journal-digest.md`
+  - `recursion-composition.md`
 - Runbooks:
   - `running.md`
   - `code-format.md`

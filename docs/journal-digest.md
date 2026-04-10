@@ -59,6 +59,92 @@ For composed guests, there is one extra step:
    assumptions with the host and fold those assumptions into the running
    `assumptions_digest`
 
+## What `zkvm.Verify(...)` Actually Means
+
+The guest-side composition helper does not run a full child-proof verifier
+inside the guest. Instead, it registers a dependency on an exact child claim.
+
+The implementation in `zkvm/verify.go` reconstructs the same digest chain used
+by the Rust guest SDK:
+
+1. hash the child journal into a `journalDigest`
+2. construct the zero post-state for an unconditional receipt
+3. construct `risc0.Output(journalDigest, zeroDigest)`
+4. construct the child `risc0.ReceiptClaim`
+5. pass that claim digest to `sys_verify_integrity`
+6. fold the same assumption into the running `assumptions_digest`
+
+So `zkvm.Verify(imageID, journal)` means:
+
+- “this execution depends on there existing a valid receipt for this exact
+  `(imageID, journal)` claim”
+
+It does not mean:
+
+- “the guest directly ran a full verifier for that child proof”
+
+That distinction is what allows risc0's recursion pipeline to resolve
+assumptions efficiently later instead of replaying a full verifier inside the
+guest program.
+
+## Guest-Side Assumptions Digest
+
+`addAssumptionDigest` in `zkvm/sha256_proper.go` maintains a hashed linked list
+of assumptions. Each node is:
+
+- `risc0.Assumption(claim_digest, control_root)`
+
+and the whole list is folded as:
+
+- `risc0.Assumptions(head, tail)`
+
+The final digest of that list becomes the `assumptions_digest` half of:
+
+```text
+risc0.Output(journal_digest, assumptions_digest)
+```
+
+So the guest-side receipt claim commits not just to the public journal, but
+also to the exact ordered set of assumptions the guest registered while it ran.
+
+## Host-Side Assumptions
+
+The host keeps the concrete child receipts separately.
+
+In the Go host path:
+
+- callers pass serialized succinct receipts in `Assumptions`
+- `host-core/src/lib.rs` decodes them and calls `builder.add_assumption(...)`
+
+That means there are two parallel representations of the same dependency set:
+
+- guest side:
+  - a digest-only assumptions list embedded into the final output claim
+- host side:
+  - the actual succinct child receipts supplied to the executor/prover
+
+## How Resolution Works
+
+During proof generation, risc0's recursion pipeline reconciles those two views.
+
+At a high level it:
+
+1. opens the conditional receipt's assumptions list
+2. takes the head assumption
+3. checks that the supplied child receipt's claim digest matches that head
+4. checks the `control_root`
+5. removes the resolved head and continues with the tail
+
+This is why composition failures often show up as an assumptions mismatch:
+the guest-side digest chain and the host-side supplied receipts no longer
+describe the same set of child claims.
+
+The important practical consequence is:
+
+- the final composed receipt no longer needs to ship the child receipts
+- once the assumptions are resolved, the verifier usually only checks the
+  final receipt and whatever public inclusion artifacts the application uses
+
 ## Why The Platform Archive Does Not Remove This Problem
 
 Linking `libzkvm_platform.a` gives us the upstream syscall-facing layer. It does
