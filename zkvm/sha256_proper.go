@@ -65,8 +65,15 @@ type ProperJournalHasher struct {
 	totalLen   uint64                  // Total bytes processed
 }
 
-var properHasher ProperJournalHasher // Static allocation instead of pointer
+var properHasher ProperJournalHasher // Static allocation instead of pointer.
 var properHasherInitialized bool
+
+// assumptionsDigestWords accumulates the running assumptions list digest. Each
+// call to Verify adds one assumption via addAssumptionDigest, building a
+// cons-cell linked list. The final value is embedded in the risc0.Output
+// tagged struct passed to sys_halt, so the host can match it against the
+// set of succinct receipts supplied as assumptions.
+var assumptionsDigestWords [8]uint32
 
 // Aligned temporary buffer for SHA block processing
 var shaBlockAligned [SHA256_BLOCK_SIZE]byte
@@ -78,6 +85,9 @@ func InitProperHasher() {
 	}
 	properHasher.bufferLen = 0
 	properHasher.totalLen = 0
+	for i := 0; i < 8; i++ {
+		assumptionsDigestWords[i] = 0
+	}
 	properHasherInitialized = true
 }
 
@@ -201,11 +211,19 @@ func FinalizeProperHasher() [8]uint32 {
 
 	// Create the "risc0.Output" tagged struct
 	// This combines the journal digest with the assumptions digest
-	assumptionsDigest := [8]uint32{0, 0, 0, 0, 0, 0, 0, 0} // Empty assumptions
-	outputDigest := taggedStruct("risc0.Output", [][8]uint32{journalDigest, assumptionsDigest})
+	outputDigest := taggedStruct(
+		"risc0.Output",
+		[][8]uint32{journalDigest, assumptionsDigestWords},
+	)
 
 	// Return the output digest instead of trying to write to halt_output_digest
 	return outputDigest
+}
+
+// SumSHA256 computes a plain SHA-256 digest using the guest-side accelerated
+// SHA path and returns the result as raw digest bytes.
+func SumSHA256(data []byte) [32]byte {
+	return digestWordsToBytes(shaBuffer(sha256InitStateBE, data))
 }
 
 // computePaddedLength computes the total padded message length in bytes for
@@ -239,12 +257,21 @@ func alignUp(addr, al int) int {
 // "risc0.Output" combines the journal digest and assumptions digest into the
 // final output digest that sys_halt expects.
 func taggedStruct(tag string, digests [][8]uint32) [8]uint32 {
+	return taggedStructWithData(tag, digests, nil)
+}
+
+// taggedStructWithData creates a tagged struct digest as defined by the risc0
+// spec, including any trailing little-endian scalar words.
+func taggedStructWithData(
+	tag string, digests [][8]uint32, data []uint32,
+) [8]uint32 {
 	// Hash the tag string
 	tagDigest := shaBuffer(sha256InitStateBE, []byte(tag))
 
 	// Create buffer for all bytes to hash
-	// Tag digest (32 bytes) + digests (32 bytes each) + count (2 bytes)
-	allBytes := make([]byte, 0, 32+len(digests)*32+2)
+	// Tag digest (32 bytes) + digests (32 bytes each) + words (4 bytes each)
+	// + count (2 bytes)
+	allBytes := make([]byte, 0, 32+len(digests)*32+len(data)*4+2)
 
 	// Add tag digest
 	for _, word := range tagDigest {
@@ -256,6 +283,10 @@ func taggedStruct(tag string, digests [][8]uint32) [8]uint32 {
 		for _, word := range digest {
 			allBytes = binary.LittleEndian.AppendUint32(allBytes, word)
 		}
+	}
+
+	for _, word := range data {
+		allBytes = binary.LittleEndian.AppendUint32(allBytes, word)
 	}
 
 	// Add count of digests as u16 in little-endian
@@ -314,4 +345,55 @@ func shaBuffer(initialState [8]uint32, bytes []byte) [8]uint32 {
 	return outState
 }
 
-// Note: InitProperHasher is called lazily when needed, not in init()
+// digestWordsToBytes converts an 8-word SHA-256 state (little-endian word
+// order, as used by the risc0 SHA acceleration) into a 32-byte digest.
+func digestWordsToBytes(words [8]uint32) [32]byte {
+	var digest [32]byte
+	for i, word := range words {
+		binary.LittleEndian.PutUint32(digest[i*4:], word)
+	}
+
+	return digest
+}
+
+// digestBytesToWords converts a 32-byte digest into the 8-word little-endian
+// representation expected by the risc0 tagged-struct and SHA acceleration APIs.
+func digestBytesToWords(digest [32]byte) [8]uint32 {
+	var words [8]uint32
+	for i := 0; i < len(words); i++ {
+		words[i] = binary.LittleEndian.Uint32(digest[i*4:])
+	}
+
+	return words
+}
+
+// taggedListCons prepends one element to a risc0 tagged linked list. The risc0
+// assumptions list is built as a right-folded cons list:
+//
+//	cons(assumption_0, cons(assumption_1, ... cons(assumption_N, nil)))
+//
+// Each cons cell is a "risc0.Assumptions" tagged struct with (head, tail)
+// digests. The empty list is the all-zero digest.
+func taggedListCons(tag string, head, tail [8]uint32) [8]uint32 {
+	return taggedStruct(tag, [][8]uint32{head, tail})
+}
+
+// addAssumptionDigest adds one verified assumption to the running assumptions
+// list. Each assumption is a "risc0.Assumption" tagged struct containing the
+// receipt claim digest and control root (zero for unconditional receipts). The
+// running list uses cons-cell construction so the final assumptions digest
+// reflects all Verify calls made during the guest's execution. The resulting
+// digest is embedded in the risc0.Output passed to sys_halt, allowing the
+// host's recursion pipeline to match guest-side assumptions against the
+// supplied succinct leaf receipts.
+func addAssumptionDigest(claimDigest, controlRoot [8]uint32) {
+	assumptionDigest := taggedStruct(
+		"risc0.Assumption",
+		[][8]uint32{claimDigest, controlRoot},
+	)
+	assumptionsDigestWords = taggedListCons(
+		"risc0.Assumptions",
+		assumptionDigest,
+		assumptionsDigestWords,
+	)
+}
