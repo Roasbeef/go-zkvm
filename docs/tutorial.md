@@ -1513,12 +1513,421 @@ right first, then prove once to confirm the receipt works.
 
 ---
 
+## Chapter 9: Recursive Composition
+
+Every chapter so far has dealt with a single guest program producing a single
+proof. But what happens when you want one proof to vouch for another? Suppose
+you have already proved that key A was derived correctly and, separately, that
+key B was derived correctly. Now you want a single receipt that says "both A and
+B were derived correctly" without making the verifier check two separate proofs.
+That is **recursive composition**: a guest program that claims, as part of its
+own execution, that other valid proofs exist.
+
+### The Core Idea
+
+A composed guest does not re-run the child program inside the VM. That would be
+absurdly expensive -- you would be executing an entire STARK verifier as a RISC-V
+program. Instead, the guest makes a much cheaper move: it *registers a claim*
+that a valid receipt exists for a specific (image ID, journal) pair, and the
+proving infrastructure resolves that claim later using the actual child receipt.
+
+Think of it like a deferred check in a financial audit. The guest writes an IOU:
+"I assert that proof X exists." The host holds the actual proof X. During proof
+generation, the risc0 recursion pipeline matches each IOU against the
+corresponding proof and folds everything into one final receipt. If any IOU
+cannot be matched, the proof fails.
+
+The result is a single receipt that cryptographically proves: "this guest ran
+correctly, *and* the child proofs it depended on are all valid." The verifier
+checks one receipt. The child receipts never need to leave the prover's machine.
+
+### Two Parallel Representations
+
+Composition creates two views of the same dependency set, and they must agree
+exactly:
+
+**Guest side (digest-only).** Each call to `zkvm.Verify` computes a
+cryptographic digest of the child claim and folds it into a running linked list
+called the *assumptions digest*. This digest becomes part of the guest's final
+output -- specifically, the `assumptions_digest` half of the `risc0.Output`
+tagged struct that `sys_halt` receives. The guest never touches the actual child
+receipt bytes. It only knows the digests.
+
+**Host side (concrete receipts).** The caller passes serialized succinct
+receipts in the `Assumptions` field of `ExecuteRequest` or `ProveRequest`. The
+Rust prover attaches these to the executor environment via
+`builder.add_assumption(receipt)`. During proof generation, the recursion
+pipeline opens the guest's assumptions list and matches each entry against a
+supplied receipt.
+
+If the guest registered three assumptions but the host supplied only two
+receipts -- or the digests do not match -- proof generation fails with an
+"assumptions mismatch" error. The system is all-or-nothing: every assumption
+the guest registers must be resolved by a concrete receipt on the host side.
+
+### What `zkvm.Verify` Actually Does
+
+When guest code calls:
+
+```go
+zkvm.Verify(childImageID, childJournal)
+```
+
+six things happen in sequence, and each one matters:
+
+1. **Hash the child journal.** The child's public journal bytes are SHA-256
+   hashed into a `journalDigest`. This is the same hash the child guest
+   produced when it called `Commit` and `Halt`.
+
+2. **Build the child's post-state.** For an unconditional receipt (the common
+   case in batch aggregation), the post-execution system state is all zeros --
+   there is no memory image to commit to.
+
+3. **Build the child's output digest.** The `risc0.Output` tagged struct
+   combines `journalDigest` with a zero assumptions digest. (The child was
+   unconditional, so its own assumptions list was empty.)
+
+4. **Build the child's receipt claim digest.** The `risc0.ReceiptClaim` tagged
+   struct combines the image ID, the post-state, the output, and two zero
+   scalars (exit code and input digest).
+
+5. **Register the assumption.** The guest calls `sys_verify_integrity`, passing
+   the claim digest and a zero control root. The host's syscall handler looks up
+   a matching receipt in the session's assumption registry. If it finds one, it
+   marks it as accessed; if not, execution halts immediately.
+
+6. **Update the running assumptions digest.** The claim digest is wrapped in a
+   `risc0.Assumption` tagged struct and prepended to the running cons-cell
+   linked list via `addAssumptionDigest`. This list will become the
+   `assumptions_digest` in the final `risc0.Output` that `Halt` passes to
+   `sys_halt`.
+
+Steps 1 through 4 reconstruct the *exact* digest chain that the Rust guest SDK
+would produce for `env::verify(image_id, journal)`. Getting any of these steps
+wrong -- a different hash, a different tagged-struct field order, a missing
+scalar -- produces a silent digest mismatch that surfaces only as a cryptic
+"assumptions mismatch" error during proving.
+
+### The Assumptions Digest: A Linked List of Claims
+
+The running assumptions digest is not an array. It is a hash-based cons-cell
+linked list, built from the inside out:
+
+```
+empty list = [0, 0, 0, 0, 0, 0, 0, 0]   (all-zero digest)
+
+after Verify(A):
+  assumption_A = taggedStruct("risc0.Assumption", [claimDigest_A, zeroControlRoot])
+  list = taggedStruct("risc0.Assumptions", [assumption_A, empty_list])
+
+after Verify(B):
+  assumption_B = taggedStruct("risc0.Assumption", [claimDigest_B, zeroControlRoot])
+  list = taggedStruct("risc0.Assumptions", [assumption_B, list])
+```
+
+Each `taggedStruct` call computes `SHA256(SHA256(tag) || digest_0 || ... ||
+count_u16_le)`. The result is a single 256-bit digest that commits to the
+entire ordered sequence of assumptions.
+
+The order matters. If the guest calls `Verify(A)` then `Verify(B)`, the
+assumptions list is `[B, [A, nil]]` (most recent first). The host must supply
+receipts that resolve in the same order. The recursion pipeline peels
+assumptions from the head of the list, so the last-registered assumption is
+resolved first.
+
+### Host-Side Plumbing
+
+On the host side, passing assumptions is straightforward:
+
+```go
+result, err := client.Prove(host.ProveRequest{
+    GuestBinary: batchGuest,
+    Stdin:       witnessBytes,
+    Assumptions: []host.AssumptionReceipt{
+        leafReceiptA,  // serialized succinct receipt bytes
+        leafReceiptB,
+    },
+}, host.WithReceiptKind(host.ReceiptKindSuccinct))
+```
+
+Each `AssumptionReceipt` is a `[]byte` containing the serialized succinct
+receipt. The `host` package base64-encodes these into the FFI JSON request,
+the Rust side decodes them back into `Receipt` objects, and
+`builder.add_assumption(receipt)` attaches each one to the executor
+environment.
+
+**Why succinct?** The risc0 recursion pipeline requires assumptions to be
+succinct receipts -- not composite receipts. A composite receipt is a bundle
+of per-segment proofs that has not yet been compressed. The recursion layer
+needs a single constant-size proof per assumption to fold into the composed
+result. If you pass a composite receipt as an assumption, the host will reject
+it. Always compress leaf receipts to succinct form before using them as
+assumptions.
+
+### What Happens During Proving
+
+When the host calls `Prove` with assumptions, the risc0 prover runs the
+following pipeline:
+
+1. **Execute the guest.** The RISC-V interpreter runs the guest program. Each
+   `sys_verify_integrity` call is intercepted by the host's syscall handler,
+   which checks that a matching receipt exists in the session's assumption
+   registry.
+
+2. **Segment the trace.** The execution trace is split into segments, just like
+   a non-composed proof.
+
+3. **Lift each segment.** Each segment receipt is transformed into a succinct
+   receipt using the recursion circuit. This is the same lift step from
+   Chapter 1, but now the lifted receipts carry an assumptions list.
+
+4. **Join segments.** The lifted segment receipts are joined pairwise into a
+   single succinct receipt. The join circuit merges assumptions from both
+   halves.
+
+5. **Resolve assumptions.** For each assumption in the joined receipt, the
+   recursion pipeline's `resolve` program takes the conditional receipt and
+   the matching child receipt, cryptographically removes the head assumption
+   from the list, and produces a new receipt with one fewer assumption.
+   Repeat until the assumptions list is empty.
+
+6. **Return an unconditional receipt.** Once all assumptions are resolved, the
+   final receipt has an empty assumptions list. It is unconditional -- any
+   verifier can check it without needing the child receipts.
+
+The key insight: the child receipts are consumed during proving. They are
+prover-side inputs, not part of the final artifact. The verifier never sees
+them.
+
+### Debugging Composition Failures
+
+When composition goes wrong, the error messages are often opaque. Here is a
+systematic checklist:
+
+1. **Digest reconstruction.** Is `zkvm.Verify` building the exact same claim
+   digest as the Rust SDK would? Check that the tagged-struct field order,
+   the hash function byte-swap convention, and the scalar encoding all match.
+
+2. **Assumptions digest updates.** Does every `zkvm.Verify` call update the
+   running assumptions digest? If the guest calls `Verify` but forgets to
+   fold the assumption into the digest, the final `risc0.Output` will not
+   match the host's expectations.
+
+3. **Receipt order.** Are the host-side receipts supplied in the right order?
+   The recursion pipeline resolves assumptions LIFO (last registered = first
+   resolved). If you swap two receipts, the claim digests will not match.
+
+4. **Receipt kind.** Are all assumption receipts succinct? Composite receipts
+   cannot serve as assumptions.
+
+5. **Image ID agreement.** Does the image ID in `zkvm.Verify(imageID, ...)`
+   match the image ID that was used to produce the child receipt? A single
+   byte difference in the guest binary produces a completely different image
+   ID.
+
+---
+
+## Chapter 10: Building a Batch Aggregation Guest
+
+Chapters 1 through 7 showed you how to prove one statement. Chapter 9 showed
+you how one proof can depend on others. This chapter puts both ideas together
+to build a **batch aggregation guest**: a program that takes N existing leaf
+proofs, verifies them all inside one guest execution, and produces a single
+receipt that covers the entire batch.
+
+The motivating scenario is Bitcoin's post-quantum migration. A wallet holds
+hundreds of UTXOs, each controlled by a different derived key. The owner needs
+to prove knowledge of the seed that produced every key. Proving each key
+separately works, but the verifier would need to check hundreds of receipts.
+A batch proof compresses that down to one receipt plus a compact Merkle proof
+for any individual key the verifier wants to inspect.
+
+### The Architecture
+
+A batch aggregation system has three layers:
+
+**Leaf proofs.** Each leaf is a standalone proof about one key (or one UTXO, or
+one derivation step). In the `bip32-pq-zkp` project, the fastest leaf proof is
+the hardened-xpriv lane: it proves one HMAC-SHA512 derivation step in about 2
+seconds and produces a 72-byte public claim.
+
+**Batch guest.** A separate guest program reads the leaf journals from stdin
+and calls `zkvm.Verify` once per leaf. It never sees the leaf private witnesses
+-- only the public journals and the fact that valid proofs exist. After
+verifying all leaves, it hashes them into a Merkle root and commits a fixed-
+size batch claim to the journal.
+
+**Sparse verification.** The verifier checks the single batch receipt, then
+uses an ordinary Merkle inclusion proof to confirm that one specific leaf is
+part of the committed batch. No leaf receipts need to be distributed.
+
+### What the Batch Guest Reads
+
+The host builds a private witness that the batch guest reads from stdin:
+
+```
+[leaf_claim_kind : u32 LE]       -- which leaf schema (1=taproot, 2=xpriv, ...)
+[merkle_hash_kind : u32 LE]      -- which hash for the tree (1=SHA-256)
+[leaf_context_digest : 32 bytes]  -- the shared leaf guest image ID
+[leaf_count : u32 LE]             -- how many leaves follow
+[leaf_journal_0 : N bytes]        -- first leaf's public journal
+[leaf_journal_1 : N bytes]        -- second leaf's public journal
+...
+```
+
+Every leaf journal has the same fixed size (72 bytes for Taproot and
+hardened-xpriv, 84 bytes for child batch claims). The guest reads the header,
+validates the configuration, then loops over the leaves.
+
+### What the Batch Guest Does
+
+For each leaf, the guest performs exactly one operation:
+
+```go
+zkvm.Verify(leafContextDigest, leafJournal)
+```
+
+This registers an assumption: "a valid receipt exists for a guest with image
+ID `leafContextDigest` that committed exactly `leafJournal` to its journal."
+The host will resolve that assumption against the corresponding succinct leaf
+receipt during proof generation.
+
+After all leaves are verified, the guest builds a **domain-separated Merkle
+tree** over the ordered leaf journals:
+
+```
+leaf_hash(i)  = SHA256(0x00 || "bip32-pq-zkp:batch-leaf:v1" || i_le32 || journal)
+inner_hash    = SHA256(0x01 || left || right)
+```
+
+The `0x00` and `0x01` prefixes prevent second-preimage attacks -- you cannot
+forge an inner node that looks like a leaf, or vice versa. The tag string and
+index binding prevent reordering leaves or substituting leaves from a different
+batch.
+
+The final Merkle root, plus a handful of metadata fields, becomes the **84-byte
+batch claim** committed to the journal:
+
+```
+[version : u32 LE]                -- claim format version
+[flags : u32 LE]                  -- policy bits
+[leaf_claim_kind : u32 LE]        -- which leaf schema was batched
+[merkle_hash_kind : u32 LE]       -- which hash was used
+[leaf_count : u32 LE]             -- how many leaves
+[leaf_context_digest : 32 bytes]  -- shared leaf guest image ID
+[merkle_root : 32 bytes]          -- root of the leaf Merkle tree
+```
+
+This claim is fixed-size regardless of N. A batch of 2 leaves and a batch of
+16 leaves produce the same 84 bytes. The fan-out is captured by the Merkle
+root, not by enumerating leaves in the journal.
+
+### How the Host Orchestrates a Batch Proof
+
+The host-side flow stitches the pieces together:
+
+1. **Load leaf artifacts.** For each leaf, read its `claim.json` to recover the
+   journal hex and image ID.
+
+2. **Verify leaf receipts.** Before trusting a leaf receipt as an assumption,
+   the host verifies it against the claimed image ID and journal. This catches
+   corrupt or mismatched receipts before they reach the prover.
+
+3. **Enforce succinct.** Only succinct receipts can serve as assumptions. The
+   host rejects composite leaf receipts.
+
+4. **Build the witness.** Serialize the batch header and concatenated leaf
+   journals into the stdin byte stream.
+
+5. **Prove.** Call `client.Prove` with the batch guest binary, the witness
+   stdin, and the leaf receipts as assumptions.
+
+6. **Write artifacts.** Save the batch receipt and a human-readable
+   `claim.json` that mirrors the 84-byte journal.
+
+The resulting batch receipt is self-contained. The verifier checks it against
+the batch guest's image ID and reads the committed batch claim from the
+journal. No leaf receipts are needed.
+
+### Sparse Verification: Disclosing One Leaf
+
+The batch receipt proves that a Merkle root was computed correctly over N valid
+leaf proofs. But the verifier usually cares about one specific leaf -- say, "is
+*my* UTXO covered by this batch?"
+
+That is where **Merkle inclusion proofs** come in. The host derives a proof for
+one leaf index:
+
+```go
+proof, root, err := batchclaim.BuildProof(leafJournals, leafIndex, sha256Sum)
+```
+
+The proof contains the disclosed leaf journal, the leaf index, and the sibling
+hashes from leaf to root -- a standard Merkle branch. The verifier recomputes
+the root from the disclosed leaf and siblings, then checks it against the
+`merkle_root` in the batch claim.
+
+The key property: the Merkle branch grows logarithmically with N. A batch of
+16 leaves needs only 4 sibling hashes. A batch of 1024 would need 10. The
+batch receipt itself stays the same size regardless.
+
+### Scaling: What Grows and What Stays Flat
+
+In the current implementation on Apple Silicon with Metal acceleration:
+
+- **Succinct receipt size:** ~223 KB, flat from N=2 to N=16.
+- **Composite receipt size:** grows linearly, ~340 KB per additional leaf.
+- **Prove time:** scales roughly linearly (~0.7s/leaf composite, ~2s/leaf
+  succinct).
+- **Claim JSON:** ~755 bytes, essentially flat.
+- **Inclusion proof:** grows as O(log N) -- negligible.
+
+For sparse disclosure, compare a batch receipt plus one inclusion proof against
+distributing N separate succinct leaf receipts:
+
+| N  | N separate receipts | Batch + inclusion |
+|----|---------------------|-------------------|
+| 2  | 447 KB              | 225 KB            |
+| 4  | 893 KB              | 225 KB            |
+| 8  | 1,787 KB            | 225 KB            |
+| 16 | 3,573 KB            | 225 KB            |
+
+The batch approach gives nearly flat verifier artifacts while the naive
+approach grows linearly.
+
+### Nested Batches and Heterogeneous Parents
+
+The batch guest reuses itself for hierarchical aggregation. A parent batch
+treats child batch claims as 84-byte leaves with `leaf_claim_kind = 3`
+(`batch_claim_v1`). The parent guest calls `zkvm.Verify` against each child
+batch's receipt, hashes the child claims into a new Merkle root, and commits
+a parent-level batch claim.
+
+Verification walks the hierarchy level by level: verify the parent receipt,
+prove one child is included in the parent root, decode the child claim, prove
+one original leaf is included in the child root. Each level adds one Merkle
+branch to the verifier's work, but the final receipt size stays flat.
+
+The system also supports **heterogeneous parents** that mix raw leaf proofs
+and child batch claims at the same level. A fixed-size 128-byte envelope
+wraps each direct child, carrying the child kind, the per-child verify image
+ID, and the padded journal. The batch claim's 32-byte context slot becomes a
+policy digest instead of a single shared image ID.
+
+For the full details of the `bip32-pq-zkp` batch system, see the
+[composition guide](https://github.com/roasbeef/bip32-pq-zkp/blob/main/docs/composition-guide.md)
+in the `bip32-pq-zkp` repository.
+
+---
+
 ## Where to Go Next
 
 - [go-zkvm-overview.md](go-zkvm-overview.md) -- architectural overview of all
   the components and how they fit together.
 - [host-api.md](host-api.md) -- full API reference for the Go host package,
   including FFI internals and memory ownership.
+- [recursion-composition.md](recursion-composition.md) -- reference-style
+  walkthrough of the recursion data flow and debugging rules.
 - [running.md](running.md) -- complete runbook with exact commands for every
   build and validation step.
 - [implementation-guide.md](implementation-guide.md) -- repo-level mechanics
