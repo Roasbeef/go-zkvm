@@ -170,9 +170,10 @@ type computeImageIDResponse struct {
 
 // executeJSONRequest is the FFI request for execute-only mode.
 type executeJSONRequest struct {
-	ABIVersion        uint32 `json:"abi_version"`
-	GuestBinaryBase64 string `json:"guest_binary_base64"`
-	StdinBase64       string `json:"stdin_base64"`
+	ABIVersion        uint32   `json:"abi_version"`
+	GuestBinaryBase64 string   `json:"guest_binary_base64"`
+	StdinBase64       string   `json:"stdin_base64"`
+	AssumptionsBase64 []string `json:"assumptions_base64"`
 }
 
 // executeJSONResponse is the FFI response for execute-only mode.
@@ -186,11 +187,12 @@ type executeJSONResponse struct {
 
 // proveJSONRequest is the FFI request for proof generation.
 type proveJSONRequest struct {
-	ABIVersion        uint32 `json:"abi_version"`
-	GuestBinaryBase64 string `json:"guest_binary_base64"`
-	StdinBase64       string `json:"stdin_base64"`
-	VerifyReceipt     bool   `json:"verify_receipt"`
-	ReceiptKind       string `json:"receipt_kind"`
+	ABIVersion        uint32   `json:"abi_version"`
+	GuestBinaryBase64 string   `json:"guest_binary_base64"`
+	StdinBase64       string   `json:"stdin_base64"`
+	AssumptionsBase64 []string `json:"assumptions_base64"`
+	VerifyReceipt     bool     `json:"verify_receipt"`
+	ReceiptKind       string   `json:"receipt_kind"`
 }
 
 // proveJSONResponse is the FFI response for proof generation.
@@ -301,7 +303,8 @@ func (c *Client) Execute(
 		GuestBinaryBase64: base64.StdEncoding.EncodeToString(
 			req.GuestBinary,
 		),
-		StdinBase64: base64.StdEncoding.EncodeToString(req.Stdin),
+		StdinBase64:       base64.StdEncoding.EncodeToString(req.Stdin),
+		AssumptionsBase64: encodeBinaryList(req.Assumptions),
 	}
 
 	var resp executeJSONResponse
@@ -350,9 +353,10 @@ func (c *Client) Prove(
 		GuestBinaryBase64: base64.StdEncoding.EncodeToString(
 			req.GuestBinary,
 		),
-		StdinBase64:   base64.StdEncoding.EncodeToString(req.Stdin),
-		VerifyReceipt: cfg.receiptSelfVerify,
-		ReceiptKind:   string(cfg.receiptKind),
+		StdinBase64:       base64.StdEncoding.EncodeToString(req.Stdin),
+		AssumptionsBase64: encodeBinaryList(req.Assumptions),
+		VerifyReceipt:     cfg.receiptSelfVerify,
+		ReceiptKind:       string(cfg.receiptKind),
 	}
 
 	var resp proveJSONResponse
@@ -429,6 +433,21 @@ func isValidProveReceiptKind(kind ReceiptKind) bool {
 	default:
 		return false
 	}
+}
+
+func encodeBinaryList(items []AssumptionReceipt) []string {
+	if len(items) == 0 {
+		return []string{}
+	}
+
+	encoded := make([]string, 0, len(items))
+	for _, item := range items {
+		encoded = append(
+			encoded, base64.StdEncoding.EncodeToString(item),
+		)
+	}
+
+	return encoded
 }
 
 // ffiInvoker is the Go function signature that wraps a C ABI FFI call. Each

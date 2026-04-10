@@ -13,7 +13,7 @@ const (
 	// abiVersion is the expected FFI protocol version. The Go side checks
 	// this against the version reported by the loaded Rust shared library
 	// to detect ABI mismatches early.
-	abiVersion = 1
+	abiVersion = 2
 
 	// LibraryPathEnvVar is the optional environment variable used to
 	// override the default `host-ffi` shared-library lookup path.
@@ -23,6 +23,10 @@ const (
 // ReceiptKind selects the minimum prove-time compression level requested
 // from the Rust host prover.
 type ReceiptKind string
+
+// AssumptionReceipt is one serialized succinct receipt supplied to a guest
+// composition run via ExecutorEnv assumptions.
+type AssumptionReceipt []byte
 
 const (
 	// ReceiptKindComposite requests a composite receipt. This is the
@@ -74,6 +78,10 @@ type ExecuteRequest struct {
 
 	// Stdin is the raw private witness stream fed into guest stdin.
 	Stdin []byte
+
+	// Assumptions are serialized succinct receipts made available to guest
+	// composition calls such as recursive verify.
+	Assumptions []AssumptionReceipt
 }
 
 // ExecuteResult summarizes the public output of an execute-only run.
@@ -101,6 +109,10 @@ type ProveRequest struct {
 
 	// Stdin is the raw private witness stream fed into guest stdin.
 	Stdin []byte
+
+	// Assumptions are serialized succinct receipts made available to guest
+	// composition calls such as recursive verify.
+	Assumptions []AssumptionReceipt
 }
 
 // ProveResult contains the public claim plus the serialized receipt.
