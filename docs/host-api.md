@@ -208,7 +208,7 @@ type ExecuteResult struct {
 | `Journal`      | `[]byte` | Raw bytes committed to the public journal by the guest. |
 | `ExitCode`     | `string` | Exit summary reported by the executor (e.g. `"halted"`). |
 | `SegmentCount` | `uint32` | Number of zkVM segments the execution was split into. |
-| `SessionRows`  | `uint64` | Total row count across all segments in the session. Useful for estimating proof cost. |
+| `SessionRows`  | `uint64` | User cycles across all segments as reported by RISC Zero 3.1, excluding continuation overhead and padding. |
 
 ### ProveRequest
 
@@ -495,7 +495,7 @@ The Rust shared library exports six symbols, resolved at runtime via
 
 | Symbol                     | Purpose |
 |----------------------------|---------|
-| `go_zkvm_abi_version`      | Returns the ABI version number (currently `2`). |
+| `go_zkvm_abi_version`      | Returns the ABI version number (currently `3`, for the RISC Zero 3.1.0 verifier). |
 | `go_zkvm_compute_image_id` | Computes the image ID for a guest binary. |
 | `go_zkvm_execute`          | Executes a guest without proof generation. |
 | `go_zkvm_prove`            | Executes a guest and generates a STARK proof. |

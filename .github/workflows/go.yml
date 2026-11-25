@@ -12,6 +12,9 @@ permissions:
 jobs:
   native:
     runs-on: ubuntu-latest
+    env:
+      # Reuse the prover build for the CLI and the Go FFI tests.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/go-zkvm/host-ffi/target
 
     steps:
       - name: Checkout go-zkvm
@@ -19,18 +22,24 @@ jobs:
         with:
           path: go-zkvm
 
-      - name: Checkout risc0 sibling
+      - name: Checkout RISC Zero port
         uses: actions/checkout@v5
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
         with:
           repository: Roasbeef/risc0
-          path: risc0
-          lfs: true
+          path: risc0-port
+          ref: 4228a5bfb7f598b0fad54cdda78f1cf92c66c125
           token: ${{ secrets.ROASBEEF_CI_TOKEN || github.token }}
+
+      - name: Prepare patched upstream v3.1.0
+        run: bash risc0-port/releases/v3.1.0/prepare.sh "$GITHUB_WORKSPACE/risc0"
 
       - name: Checkout tinygo-zkvm sibling
         uses: actions/checkout@v5
         with:
           repository: Roasbeef/tinygo-zkvm
+          ref: 3a9a23f2679af76883390e73f6f362d6785e829e
           path: tinygo-zkvm
           submodules: recursive
           token: ${{ secrets.ROASBEEF_CI_TOKEN || github.token }}
@@ -39,10 +48,10 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: "1.24.4"
-          cache-dependency-path: go-zkvm/go.sum
+          cache-dependency-path: go-zkvm/go.mod
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.97.1
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -60,6 +69,11 @@ jobs:
             cmake \
             ninja-build \
             python3
+
+      - name: Install RISC Zero guest Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -fsSL https://risczero.com/install | bash
+          "$HOME/.risc0/bin/rzup" install rust 1.97.0
 
       - name: Restore TinyGo LLVM source cache
         uses: actions/cache/restore@v4
@@ -130,6 +144,10 @@ jobs:
       - name: lint-native
         working-directory: go-zkvm
         run: make lint-native
+
+      - name: Prove and verify the sample guests
+        working-directory: go-zkvm
+        run: make verify-samples
 
       - name: native-check
         working-directory: go-zkvm

@@ -10,7 +10,8 @@ use host_core::{
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-const ABI_VERSION: u32 = 2;
+// ABI 3 pairs the Go client with the RISC Zero 3.1.0 verifier.
+const ABI_VERSION: u32 = 3;
 
 #[derive(Debug, Serialize)]
 struct ErrorResponse {

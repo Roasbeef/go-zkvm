@@ -447,6 +447,7 @@ fn run() {
         let session = host_execute(ExecuteRequest {
             guest_binary,
             stdin,
+            assumptions: Vec::new(),
         })
         .expect("Execution failed");
         println!("✓ Execution successful!");
@@ -469,7 +470,7 @@ fn run() {
         println!("  Exit code: {}", session.exit_code);
         println!("  Journal size: {} bytes", session.journal.len());
         println!("  Segments: {}", session.segment_count);
-        println!("  Rows: {}", session.session_rows);
+        println!("  User cycles: {}", session.session_rows);
         return;
     }
 
@@ -478,6 +479,7 @@ fn run() {
     let prove_result = host_prove(ProveRequest {
         guest_binary,
         stdin,
+        assumptions: Vec::new(),
         verify_receipt: true,
         receipt_kind,
     })

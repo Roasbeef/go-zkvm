@@ -12,8 +12,8 @@ import (
 const (
 	// abiVersion is the expected FFI protocol version. The Go side checks
 	// this against the version reported by the loaded Rust shared library
-	// to detect ABI mismatches early.
-	abiVersion = 2
+	// before accepting a prover or verifier from the shared library.
+	abiVersion = 3
 
 	// LibraryPathEnvVar is the optional environment variable used to
 	// override the default `host-ffi` shared-library lookup path.
@@ -98,7 +98,8 @@ type ExecuteResult struct {
 	// SegmentCount is the number of zkVM segments executed.
 	SegmentCount uint32
 
-	// SessionRows is the total row count reported by the session.
+	// SessionRows reports RISC Zero 3.1 user cycles across all segments,
+	// excluding continuation overhead and power-of-two padding.
 	SessionRows uint64
 }
 

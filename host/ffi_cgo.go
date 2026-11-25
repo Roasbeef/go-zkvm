@@ -37,6 +37,20 @@ static go_zkvm_op_fn go_zkvm_prove_ptr = NULL;
 static go_zkvm_op_fn go_zkvm_verify_ptr = NULL;
 static go_zkvm_free_buffer_fn go_zkvm_free_buffer_ptr = NULL;
 
+// A rejected library must not prevent a subsequent load of the correct one.
+static void go_zkvm_host_reset(void) {
+    if (go_zkvm_handle != NULL) {
+        dlclose(go_zkvm_handle);
+    }
+    go_zkvm_handle = NULL;
+    go_zkvm_abi_version_ptr = NULL;
+    go_zkvm_compute_image_id_ptr = NULL;
+    go_zkvm_execute_ptr = NULL;
+    go_zkvm_prove_ptr = NULL;
+    go_zkvm_verify_ptr = NULL;
+    go_zkvm_free_buffer_ptr = NULL;
+}
+
 static const char* go_zkvm_host_load(const char* path) {
     if (go_zkvm_handle != NULL) {
         return NULL;
@@ -69,7 +83,8 @@ static const char* go_zkvm_host_load(const char* path) {
         go_zkvm_prove_ptr == NULL ||
         go_zkvm_verify_ptr == NULL ||
         go_zkvm_free_buffer_ptr == NULL) {
-        return dlerror();
+        go_zkvm_host_reset();
+        return "missing required host FFI symbol";
     }
 
     return NULL;
@@ -258,6 +273,7 @@ func loadFFILibrary(path string) error {
 
 	version := uint32(C.go_zkvm_host_loaded_abi_version())
 	if version != abiVersion {
+		C.go_zkvm_host_reset()
 		return fmt.Errorf(
 			"host: ABI version mismatch: got %d, want %d",
 			version, abiVersion,

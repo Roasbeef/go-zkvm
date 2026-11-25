@@ -4,6 +4,7 @@ This runbook assumes the sibling layout:
 
 ```text
 github.com/roasbeef/
+├── risc0-port
 ├── risc0
 ├── tinygo-zkvm
 └── go-zkvm
@@ -12,16 +13,47 @@ github.com/roasbeef/
 ## Prerequisites
 
 - Go `1.24.4`
-- Rust toolchain compatible with the checked-out `risc0`
+- Host Rust `1.97.1` and the RISC Zero guest Rust toolchain
 - a built TinyGo fork in `../tinygo-zkvm`
-- a built risc0 platform archive in `../risc0/examples/c-guest`
+- Git LFS for the release circuits
+
+From a fresh parent directory containing `go-zkvm/`, prepare the release
+checkout and pin the sibling compiler. The release script takes a new
+destination, checks the upstream tag and patched Git tree, and downloads the
+release circuits.
+
+```bash
+GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/Roasbeef/risc0.git risc0-port
+GIT_LFS_SKIP_SMUDGE=1 git -C risc0-port checkout 4228a5bfb7f598b0fad54cdda78f1cf92c66c125
+bash risc0-port/releases/v3.1.0/prepare.sh "$PWD/risc0"
+git clone https://github.com/Roasbeef/tinygo-zkvm.git tinygo-zkvm
+git -C tinygo-zkvm checkout 3a9a23f2679af76883390e73f6f362d6785e829e
+rzup install rust 1.97.0
+```
+
+Existing installations can prepare the sibling layout in a fresh parent
+directory to keep the previous toolchain available while rebuilding.
+
+For an external prover (`RISC0_PROVER=ipc`), install `r0vm` 3.1.0 and point
+any `RISC0_SERVER_PATH` override at that binary. The local prover links the
+3.1.0 circuits directly. If you use the Cargo CLI, install its matching
+release as well.
+
+```bash
+rzup install r0vm 3.1.0
+rzup install cargo-risczero 3.1.0
+```
+
+Rebuild `host-ffi` and run the prover again for saved receipts, including
+each leaf receipt used by a recursive proof. Recompute image IDs when you
+rebuild the guest binaries. The new Go client requires host ABI 3, so an old
+shared library fails at load time. [Upstream release notes](https://github.com/risc0/risc0/releases/tag/v3.1.0)
 
 Fresh-clone setup notes:
 
 - in `../tinygo-zkvm`, run `git submodule update --init --recursive`
 - in `../tinygo-zkvm`, run `make llvm-source` once before the first
   external-LLVM build so the repo-local Clang/LLD headers are available
-- in `../risc0`, run `git lfs pull` before building the Rust host/prover path
 
 If your shell default is a newer Go release, export the GOROOT TinyGo should
 use:
@@ -61,7 +93,7 @@ examples/c-guest/guest/out/platform/riscv32im-risc0-zkvm-elf/release/libzkvm_pla
 ```
 
 `platform-standalone` is the preferred path now. It builds the archive through
-a temporary standalone Cargo package pinned to the published risc0 git commit,
+a temporary standalone Cargo package with pinned upstream dependencies,
 which avoids the checkout-path sensitivity seen in the older workspace-local
 `make platform` flow.
 
@@ -114,6 +146,10 @@ To validate the typed Go wrapper against the live Rust prover:
 ```bash
 make test-host-ffi
 ```
+
+This target verifies a composite receipt for `simple`. It also proves a
+succinct `simple` receipt, supplies it to a parent guest calling
+`zkvm.Verify`, and checks the parent receipt against the expected journal.
 
 ## Reference CLI: Execute Without Proving
 
@@ -239,31 +275,19 @@ The guest commits this public summary:
 - total
 - limit
 
-## Current Validated Sample Outputs
+## Checking sample outputs
 
-These values come from the current deterministic verification pass using
-`make platform-standalone`. Treat the image IDs as artifact-specific constants
-for that documented build path.
+`make verify-samples` executes the reference CLI with local proving and
+development mode disabled. It prints each built image ID and receipt seal size.
+Expect an empty journal for `simple`, the product `391` for `multiply`, and the
+following raw journal for the default `policy_check` input.
 
-- `simple`
-  - image ID: `9ac42ea490374af40aa6ca499952a133edb38df51a314b47041bf06576494f2e`
-  - raw journal: empty
-  - proof seal size: `203016` bytes
-- `multiply`
-  - image ID: `db8cb4b1a0a6045cc3e64f1eb6f2927eadd73f33bbceb261b91da1b3068e10f2`
-  - public output: `391`
-  - proof seal size: `203016` bytes
-- `policy_check`
-  - image ID: `78e9677b5db05ea0a2a5de33c54f85d5ba1724364f8f73c150949066753144ac`
-  - raw journal: `0300000001000000f5000000000000001400000000000000e100000000000000fa00000000000000`
-  - decoded summary:
-    - item count `3`
-    - approved `true`
-    - subtotal `245`
-    - discount `20`
-    - total `225`
-    - limit `250`
-  - proof seal size: `203016` bytes
+```text
+0300000001000000f5000000000000001400000000000000e100000000000000fa00000000000000
+```
+
+Pin the image ID from the exact guest binary you distribute. Image IDs from
+earlier sample builds and their receipt sizes describe those artifacts only.
 
 ## Notes
 
