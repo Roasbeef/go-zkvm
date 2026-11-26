@@ -152,15 +152,14 @@ The intended sibling layout is:
 
 ```text
 github.com/roasbeef/
-├── risc0-port
 ├── risc0
 ├── tinygo-zkvm
 ├── go-zkvm
 └── bip32-pq-zkp
 ```
 
-`risc0-port` contains the release patch and preparation script. The build reads
-its RISC Zero sources from the prepared `risc0` directory.
+The build reads RISC Zero sources from the pinned commit on the fork’s
+`release/v3.1.0-go` branch. See [Running go-zkvm](docs/running.md) for setup.
 
 ## Quick Start
 

@@ -22,18 +22,16 @@ jobs:
         with:
           path: go-zkvm
 
-      - name: Checkout RISC Zero port
+      - name: Checkout RISC Zero v3.1.0 Go release
         uses: actions/checkout@v5
-        env:
-          GIT_LFS_SKIP_SMUDGE: "1"
         with:
           repository: Roasbeef/risc0
-          path: risc0-port
-          ref: 4228a5bfb7f598b0fad54cdda78f1cf92c66c125
-          token: ${{ secrets.ROASBEEF_CI_TOKEN || github.token }}
+          path: risc0
+          ref: 2da8bf6dff33cbb6e148d5f3b9b639929a582d7c
 
-      - name: Prepare patched upstream v3.1.0
-        run: bash risc0-port/releases/v3.1.0/prepare.sh "$GITHUB_WORKSPACE/risc0"
+      - name: Fetch proving circuits
+        working-directory: risc0
+        run: git lfs pull --include='risc0/circuit/*/src/zkrs.tar.xz'
 
       - name: Checkout tinygo-zkvm sibling
         uses: actions/checkout@v5

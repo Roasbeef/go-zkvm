@@ -4,7 +4,6 @@ This runbook assumes the sibling layout:
 
 ```text
 github.com/roasbeef/
-├── risc0-port
 ├── risc0
 ├── tinygo-zkvm
 └── go-zkvm
@@ -17,15 +16,13 @@ github.com/roasbeef/
 - a built TinyGo fork in `../tinygo-zkvm`
 - Git LFS for the release circuits
 
-From a fresh parent directory containing `go-zkvm/`, prepare the release
-checkout and pin the sibling compiler. The release script takes a new
-destination, checks the upstream tag and patched Git tree, and downloads the
-release circuits.
+From a fresh parent directory containing `go-zkvm/`, check out the pinned
+release of the RISC Zero fork and fetch its proving circuits.
 
 ```bash
-GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/Roasbeef/risc0.git risc0-port
-GIT_LFS_SKIP_SMUDGE=1 git -C risc0-port checkout 4228a5bfb7f598b0fad54cdda78f1cf92c66c125
-bash risc0-port/releases/v3.1.0/prepare.sh "$PWD/risc0"
+GIT_LFS_SKIP_SMUDGE=1 git clone --branch release/v3.1.0-go --single-branch https://github.com/Roasbeef/risc0.git risc0
+GIT_LFS_SKIP_SMUDGE=1 git -C risc0 checkout --detach 2da8bf6dff33cbb6e148d5f3b9b639929a582d7c
+git -C risc0 lfs pull --include='risc0/circuit/*/src/zkrs.tar.xz'
 git clone https://github.com/Roasbeef/tinygo-zkvm.git tinygo-zkvm
 git -C tinygo-zkvm checkout 3a9a23f2679af76883390e73f6f362d6785e829e
 rzup install rust 1.97.0
