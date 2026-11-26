@@ -2,18 +2,20 @@
 
 package sha256
 
-/*
-#include <stdint.h>
-void sys_sha_buffer(uint32_t* out_state, uint32_t* in_state, uint8_t* buf,
-	uint32_t count);
-*/
-import "C"
-
 import (
 	"encoding/binary"
 	"hash"
 	"unsafe"
 )
+
+// sysShaBuffer is the platform's sys_sha_buffer. It is declared without cgo
+// so that //go:noescape applies: a cgo call makes every pointer argument
+// escape, and in a guest whose allocator never frees, that turns each
+// stack buffer handed to the accelerator into a fresh heap allocation.
+//
+//go:linkname sysShaBuffer sys_sha_buffer
+//go:noescape
+func sysShaBuffer(outState, inState *uint32, buf unsafe.Pointer, count uint32)
 
 // maxBlocksPerCall bounds a single accelerator call. The platform caps a
 // buffer call at 1000 blocks.
@@ -73,11 +75,7 @@ func (d *digest) compress(p unsafe.Pointer, n int) {
 		if c > maxBlocksPerCall {
 			c = maxBlocksPerCall
 		}
-		C.sys_sha_buffer(
-			(*C.uint32_t)(unsafe.Pointer(&d.state[0])),
-			(*C.uint32_t)(unsafe.Pointer(&d.state[0])),
-			(*C.uint8_t)(p), C.uint32_t(c),
-		)
+		sysShaBuffer(&d.state[0], &d.state[0], p, uint32(c))
 		p = unsafe.Add(p, c*BlockSize)
 		n -= c
 	}
@@ -99,19 +97,15 @@ func (d *digest) Write(p []byte) (int, error) {
 		d.nx = 0
 	}
 
-	// Whole blocks from a word-aligned input go to the accelerator
-	// directly. Unaligned input is staged one block at a time.
-	if blocks := len(p) / BlockSize; blocks > 0 {
-		base := unsafe.Pointer(unsafe.SliceData(p))
-		if uintptr(base)&3 == 0 {
-			d.compress(base, blocks)
-		} else {
-			for i := 0; i < blocks; i++ {
-				copy(buf[:], p[i*BlockSize:])
-				d.compress(unsafe.Pointer(&d.block[0]), 1)
-			}
-		}
-		p = p[blocks*BlockSize:]
+	// Every block is staged through the word-aligned block buffer. Handing
+	// the caller's bytes to the accelerator directly would need an
+	// alignment check, and converting the pointer to an integer makes
+	// TinyGo treat the caller's buffer as escaping, which turns every
+	// stack buffer that is hashed into a heap allocation.
+	for len(p) >= BlockSize {
+		copy(buf[:], p[:BlockSize])
+		d.compress(unsafe.Pointer(&d.block[0]), 1)
+		p = p[BlockSize:]
 	}
 	d.nx = copy(buf[:], p)
 
@@ -126,18 +120,23 @@ func (d *digest) Sum(b []byte) []byte {
 	return append(b, sum[:]...)
 }
 
-// checkSum pads and finishes the digest.
+// checkSum pads and finishes the digest. Padding writes whole words where
+// it can, because byte loops and the platform memset are slow in a guest.
 func (d *digest) checkSum() [Size]byte {
 	bits := d.len << 3
 	buf := d.blockBytes()
 	buf[d.nx] = 0x80
-	for i := d.nx + 1; i < BlockSize; i++ {
+	i := d.nx + 1
+	for ; i < BlockSize && i&3 != 0; i++ {
 		buf[i] = 0
+	}
+	for w := i / 4; w < BlockSize/4; w++ {
+		d.block[w] = 0
 	}
 	if d.nx >= BlockSize-8 {
 		d.compress(unsafe.Pointer(&d.block[0]), 1)
-		for i := range buf {
-			buf[i] = 0
+		for w := range d.block {
+			d.block[w] = 0
 		}
 	}
 	binary.BigEndian.PutUint64(buf[BlockSize-8:], bits)
@@ -148,9 +147,15 @@ func (d *digest) checkSum() [Size]byte {
 	return out
 }
 
+// sumScratch is the digest Sum256 uses. A stack digest would escape to the
+// heap through the accelerator call, and the guest allocator never frees,
+// so every hash would leak and zero a fresh digest. Sharing one is safe
+// because guests are single threaded and Sum256 never yields.
+var sumScratch digest
+
 // Sum256 returns the SHA-256 checksum of the data.
 func Sum256(data []byte) [Size]byte {
-	var d digest
+	d := &sumScratch
 	d.Reset()
 	d.Write(data)
 	return d.checkSum()

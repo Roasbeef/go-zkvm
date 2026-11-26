@@ -18,8 +18,21 @@ in both places and native tests cover the algorithms the guest runs.
 ## `accel/sha256`
 
 `New`, `Sum256`, `Size` and `BlockSize` mirror `crypto/sha256`. Swapping the
-import is enough. Whole blocks from word-aligned input go straight to the
-accelerator; other input is staged through an aligned block buffer.
+import is enough. Input is staged through a word-aligned block buffer, and
+`Sum256` reuses one package-level digest, so hashing a stack buffer does not
+allocate.
+
+## Heap escapes
+
+TinyGo guests use a leaking allocator: nothing is freed, and every heap
+allocation is zeroed. A pointer passed through cgo, returned from a helper,
+or converted to an integer makes TinyGo move its object to the heap, so a
+hash or curve operation in a loop can spend more cycles allocating than
+computing. The accel packages declare the platform syscalls with
+`//go:linkname` and `//go:noescape` instead of cgo, never convert caller
+pointers to integers, and avoid helpers that return pointers into their
+arguments. `tinygo build -print-allocs=<package regexp>` lists the
+allocations that remain.
 
 ## `accel/bigint2`
 
@@ -64,9 +77,9 @@ vectors inside the guest and prints cycle counts. On RISC Zero v3.1.0:
 
 | Operation | Cycles |
 | --- | ---: |
-| SHA-256 of 64 bytes | about 2,000 |
-| SHA-256 of 1,000 bytes | about 2,900 |
-| BIP-340 verification | about 300,000 |
+| SHA-256 of 64 bytes | about 1,800 |
+| SHA-256 of 1,000 bytes | about 5,500 |
+| BIP-340 verification | about 230,000 |
 | x-only tweak | about 115,000 |
 | lift_x failure (non-square) | about 40,000 |
 

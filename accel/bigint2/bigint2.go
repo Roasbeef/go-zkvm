@@ -48,14 +48,23 @@ func mustReduced(x, m *Uint256) {
 	}
 }
 
-// pointCoord returns coordinate i of p.
-func pointCoord(p *Point, i int) *Uint256 {
-	return (*Uint256)(p[i*Words : (i+1)*Words])
-}
-
-// curvePrime returns the field prime of c.
-func curvePrime(c *Curve) *Uint256 {
-	return (*Uint256)(c[:Words])
+// mustReducedPoint panics unless both coordinates of p are below the
+// curve's prime. It indexes in place rather than returning coordinate
+// pointers, because a returned pointer makes TinyGo heap-allocate the point.
+func mustReducedPoint(p *Point, c *Curve) {
+	for coord := 0; coord < 2; coord++ {
+		less := false
+		for i := Words - 1; i >= 0; i-- {
+			x, m := p[coord*Words+i], c[i]
+			if x != m {
+				less = x < m
+				break
+			}
+		}
+		if !less {
+			panic("bigint2: result is not reduced")
+		}
+	}
 }
 
 // ModMul256 sets z = x*y mod m. m must be non-zero.
@@ -75,14 +84,12 @@ func ModInv256(z, x, m *Uint256) {
 // identity, and have different x coordinates.
 func ECAdd256(z, p, q *Point, c *Curve) {
 	ecAdd256(z, p, q, c)
-	mustReduced(pointCoord(z, 0), curvePrime(c))
-	mustReduced(pointCoord(z, 1), curvePrime(c))
+	mustReducedPoint(z, c)
 }
 
 // ECDouble256 sets z = 2p on c. p must be on the curve, not the identity,
 // and have a non-zero y coordinate.
 func ECDouble256(z, p *Point, c *Curve) {
 	ecDouble256(z, p, c)
-	mustReduced(pointCoord(z, 0), curvePrime(c))
-	mustReduced(pointCoord(z, 1), curvePrime(c))
+	mustReducedPoint(z, c)
 }
