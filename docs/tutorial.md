@@ -350,14 +350,8 @@ pinpoints the exact binary.
 
 This means the verifier must know the expected image ID in advance. In practice,
 you publish the image ID alongside your application so that verifiers can check
-receipts against it. The current deterministic image ID for `multiply` is:
-
-```
-db8cb4b1a0a6045cc3e64f1eb6f2927eadd73f33bbceb261b91da1b3068e10f2
-```
-
-Build it yourself with `make multiply` using the same toolchain to reproduce
-this value.
+receipts against it. Build `multiply.bin` with `make multiply`, then call
+`host.ComputeImageIDFile` to obtain the ID for the binary you distribute.
 
 ### How Verification Works in Practice
 
@@ -1333,7 +1327,7 @@ the guest with a different TinyGo version, different Go version, different
 `libzkvm_platform.a`, or different risc0 checkout, the image ID changes. A
 receipt generated with one image ID will fail verification against a different
 one. Pin your toolchain versions. Use `make platform-standalone` for
-deterministic archive builds from a published risc0 commit.
+deterministic archive builds against the pinned RISC Zero release.
 
 **Kernel/user ELF mismatch.** The R0BF container packs both the user ELF (your
 guest) and the kernel ELF (`v1compat.elf`). They must come from the same risc0

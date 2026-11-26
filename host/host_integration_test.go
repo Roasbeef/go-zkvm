@@ -8,6 +8,8 @@
 package host
 
 import (
+	"bytes"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -113,6 +115,78 @@ func TestHostFFISimpleGuest(t *testing.T) {
 	}
 	if verifyResult.SealBytes == 0 {
 		t.Fatal("verify returned zero seal bytes")
+	}
+}
+
+func TestHostFFIComposition(t *testing.T) {
+	root := repoRoot(t)
+	leafPath := filepath.Join(root, "simple.bin")
+	parentPath := filepath.Join(root, "verify_simple.bin")
+	paths := []string{defaultLibraryPath(), leafPath, parentPath}
+	for _, path := range paths {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			t.Skipf("run make test-host-ffi to build %s", path)
+		} else if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	client, err := New(WithLibraryPath(defaultLibraryPath()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	leafBinary, err := ReadGuestFile(leafPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentBinary, err := ReadGuestFile(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentID, err := client.ComputeImageID(parentBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	leaf, err := client.Prove(
+		ProveRequest{GuestBinary: leafBinary},
+		WithReceiptKind(ReceiptKindSuccinct),
+	)
+	if err != nil {
+		t.Fatalf("prove leaf: %v", err)
+	}
+	if leaf.ReceiptKind != ReceiptKindSuccinct {
+		t.Fatalf("expected succinct receipt, got %s", leaf.ReceiptKind)
+	}
+	imageID, err := hex.DecodeString(leaf.ImageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := client.Prove(ProveRequest{
+		GuestBinary: parentBinary,
+		Stdin:       imageID,
+		Assumptions: []AssumptionReceipt{leaf.Receipt},
+	})
+	if err != nil {
+		t.Fatalf("prove parent: %v", err)
+	}
+	if parent.ReceiptKind != ReceiptKindComposite {
+		t.Fatalf("expected composite parent receipt, got %s",
+			parent.ReceiptKind)
+	}
+	verified, err := client.Verify(VerifyRequest{
+		Receipt:         parent.Receipt,
+		ImageID:         parentID,
+		ExpectedJournal: imageID,
+	})
+	if err != nil {
+		t.Fatalf("verify parent: %v", err)
+	}
+	if !verified.Verified || !bytes.Equal(verified.Journal, imageID) {
+		t.Fatalf("unexpected parent result: verified=%v journal=%x",
+			verified.Verified, verified.Journal)
 	}
 }
 

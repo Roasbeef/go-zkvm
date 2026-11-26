@@ -1,7 +1,7 @@
 use borsh::{to_vec, BorshDeserialize};
 use hex::FromHex;
 use risc0_zkvm::{
-    compute_image_id, default_executor, default_prover, Digest, ExecutorEnv, Prover, ProverOpts,
+    compute_image_id, default_executor, default_prover, Digest, ExecutorEnv, ProverOpts,
     Receipt,
 };
 use thiserror::Error;
@@ -142,7 +142,7 @@ pub fn execute(req: ExecuteRequest) -> Result<ExecuteResult, HostError> {
         journal: session.journal.bytes.to_vec(),
         exit_code: format!("{:?}", session.exit_code),
         segment_count: session.segments.len() as u32,
-        session_rows: session.rows() as u64,
+        session_rows: session.cycles(),
     })
 }
 
@@ -152,7 +152,7 @@ pub fn prove(req: ProveRequest) -> Result<ProveResult, HostError> {
     let image_id_hex = image_id.to_string();
     let env = build_env_with_assumptions(&req.stdin, &req.assumptions)?;
     let prover = default_prover();
-    let prover_name = prover.get_name().to_string();
+    let prover_name = prover.get_name();
     let opts = req.receipt_kind.prover_opts();
     let prove_info = prover
         .prove_with_opts(env, &req.guest_binary, &opts)
@@ -233,11 +233,7 @@ fn build_env_with_assumptions(
                 "decode assumption receipt {idx}: {err:#}"
             ))
         })?;
-        builder.add_assumption(receipt).map_err(|err| {
-            HostError::InvalidRequest(format!(
-                "add assumption receipt {idx}: {err:#}"
-            ))
-        })?;
+        builder.add_assumption(receipt);
     }
 
     builder

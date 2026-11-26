@@ -113,7 +113,7 @@ want a direct Rust-side reference CLI for debugging or parity checks.
 
 Today, that “exact built artifact” wording still matters, but the recommended
 path is now the deterministic one: build the archive with
-`risc0/examples/c-guest make platform-standalone` first. That published-commit
+`risc0/examples/c-guest make platform-standalone` first. That release-pinned
 standalone builder eliminated the checkout-path drift we saw in the older
 workspace-local `make platform` flow.
 

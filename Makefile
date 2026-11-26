@@ -23,7 +23,7 @@ define print
 	@echo $(GREEN)$1$(NC)
 endef
 
-.PHONY: all check-tools clean platform-standalone simple multiply policy-check verify-samples host-ffi test-host-ffi fmt fmt-check tidy tidy-check local-custom-gcl install-custom-gcl build-native-linter lint-native lint native-check
+.PHONY: all check-tools clean platform-standalone simple multiply policy-check verify-samples verify-simple-guest host-ffi test-host-ffi fmt fmt-check tidy tidy-check local-custom-gcl install-custom-gcl build-native-linter lint-native lint native-check
 
 all: simple multiply policy-check
 
@@ -50,18 +50,26 @@ policy-check: check-tools
 	$(CONVERT) policy_check.elf $(KERNEL) policy_check.bin
 	@echo "Built policy_check.bin"
 
+verify-simple-guest: check-tools
+	PATH=$(GO_GOROOT)/bin:$$PATH GOROOT=$(GO_GOROOT) $(TINYGO_BIN) build -target=zkvm-platform -scheduler=none -no-debug -ldflags='-extldflags=$(PLATFORM_LIB)' -o verify_simple.elf ./host/testdata/verify_simple
+	$(CONVERT) verify_simple.elf $(KERNEL) verify_simple.bin
+
+verify-samples test-host-ffi native-check: export RISC0_DEV_MODE = 0
+verify-samples test-host-ffi native-check: export RISC0_PROVER = local
+verify-samples test-host-ffi native-check: export RISC0_EXECUTOR = local
+
 verify-samples: all
-	cd $(GO_GUEST_HOST_DIR) && cargo run --release -- ../simple.bin --raw-journal --execute-only
-	cd $(GO_GUEST_HOST_DIR) && cargo run --release -- ../simple.bin --raw-journal
-	cd $(GO_GUEST_HOST_DIR) && cargo run --release -- ../multiply.bin
-	cd $(GO_GUEST_HOST_DIR) && cargo run --release -- ../policy_check.bin --raw-journal --execute-only
-	cd $(GO_GUEST_HOST_DIR) && cargo run --release -- ../policy_check.bin --raw-journal
+	cd $(GO_GUEST_HOST_DIR) && cargo run --locked --release -- ../simple.bin --raw-journal --execute-only
+	cd $(GO_GUEST_HOST_DIR) && cargo run --locked --release -- ../simple.bin --raw-journal
+	cd $(GO_GUEST_HOST_DIR) && cargo run --locked --release -- ../multiply.bin
+	cd $(GO_GUEST_HOST_DIR) && cargo run --locked --release -- ../policy_check.bin --raw-journal --execute-only
+	cd $(GO_GUEST_HOST_DIR) && cargo run --locked --release -- ../policy_check.bin --raw-journal
 
 host-ffi:
-	cargo build --manifest-path $(HOST_FFI_DIR)/Cargo.toml --release
+	cargo build --locked --manifest-path $(HOST_FFI_DIR)/Cargo.toml --release
 
-test-host-ffi: host-ffi simple
-	CGO_ENABLED=1 $(GO) test ./host -v
+test-host-ffi: host-ffi simple verify-simple-guest
+	CGO_ENABLED=1 $(GO) test ./host -count=1 -v
 
 fmt:
 	gofmt -w $(GOFMT_FILES)
@@ -91,11 +99,11 @@ lint-native: build-native-linter
 
 lint: lint-native
 
-native-check: host-ffi simple
+native-check: host-ffi simple verify-simple-guest
 	$(GO) build ./convert_to_r0bf.go
 	$(GO) build ./extract_r0bf.go
 	$(GO) build ./host
-	CGO_ENABLED=1 $(GO) test ./host -run TestHostFFISimpleGuest -v
+	CGO_ENABLED=1 $(GO) test ./host -count=1 -run TestHostFFI -v
 
 clean:
 	rm -f *.elf *.bin
