@@ -15,7 +15,7 @@ GO_GUEST_HOST_DIR ?= $(CURDIR)/go-guest-host
 HOST_FFI_DIR ?= $(CURDIR)/host-ffi
 EXAMPLES_DIR ?= $(CURDIR)/examples
 GOFMT_FILES := $(shell find . -type f -name '*.go' -not -path './go-guest-host/target/*' -not -path './host-ffi/target/*' -not -path './vendor/*')
-NATIVE_GO_PKGS := ./host
+NATIVE_GO_PKGS := ./host ./accel/...
 
 GREEN := "\\033[0;32m"
 NC := "\\033[0m"
@@ -23,9 +23,9 @@ define print
 	@echo $(GREEN)$1$(NC)
 endef
 
-.PHONY: all check-tools clean platform-standalone simple multiply policy-check verify-samples verify-simple-guest host-ffi test-host-ffi fmt fmt-check tidy tidy-check local-custom-gcl install-custom-gcl build-native-linter lint-native lint native-check
+.PHONY: all check-tools clean platform-standalone simple multiply policy-check accel-selftest verify-samples verify-simple-guest host-ffi test-host-ffi fmt fmt-check tidy tidy-check local-custom-gcl install-custom-gcl build-native-linter lint-native lint native-check
 
-all: simple multiply policy-check
+all: simple multiply policy-check accel-selftest
 
 platform-standalone:
 	$(MAKE) -C $(RISC0_DIR)/examples/c-guest platform-standalone
@@ -49,6 +49,11 @@ policy-check: check-tools
 	PATH=$(GO_GOROOT)/bin:$$PATH GOROOT=$(GO_GOROOT) $(TINYGO_BIN) build -target=zkvm-platform -scheduler=none -no-debug -ldflags='-extldflags=$(PLATFORM_LIB)' -o policy_check.elf $(EXAMPLES_DIR)/policy_check
 	$(CONVERT) policy_check.elf $(KERNEL) policy_check.bin
 	@echo "Built policy_check.bin"
+
+accel-selftest: check-tools
+	PATH=$(GO_GOROOT)/bin:$$PATH GOROOT=$(GO_GOROOT) $(TINYGO_BIN) build -target=zkvm-platform -scheduler=none -no-debug -ldflags='-extldflags=$(PLATFORM_LIB)' -o accel_selftest.elf $(EXAMPLES_DIR)/accel_selftest
+	$(CONVERT) accel_selftest.elf $(KERNEL) accel_selftest.bin
+	@echo "Built accel_selftest.bin"
 
 verify-simple-guest: check-tools
 	PATH=$(GO_GOROOT)/bin:$$PATH GOROOT=$(GO_GOROOT) $(TINYGO_BIN) build -target=zkvm-platform -scheduler=none -no-debug -ldflags='-extldflags=$(PLATFORM_LIB)' -o verify_simple.elf ./host/testdata/verify_simple
@@ -104,6 +109,7 @@ native-check: host-ffi simple verify-simple-guest
 	$(GO) build ./extract_r0bf.go
 	$(GO) build ./host
 	CGO_ENABLED=1 $(GO) test ./host -count=1 -run TestHostFFI -v
+	$(GO) test ./accel/... -count=1
 
 clean:
 	rm -f *.elf *.bin
