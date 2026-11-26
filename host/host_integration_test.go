@@ -122,9 +122,10 @@ func TestHostFFIComposition(t *testing.T) {
 	root := repoRoot(t)
 	leafPath := filepath.Join(root, "simple.bin")
 	parentPath := filepath.Join(root, "verify_simple.bin")
-	for _, path := range []string{defaultLibraryPath(), leafPath, parentPath} {
+	paths := []string{defaultLibraryPath(), leafPath, parentPath}
+	for _, path := range paths {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			t.Skipf("missing %s; build with make test-host-ffi", path)
+			t.Skipf("run make test-host-ffi to build %s", path)
 		} else if err != nil {
 			t.Fatal(err)
 		}
@@ -157,7 +158,7 @@ func TestHostFFIComposition(t *testing.T) {
 		t.Fatalf("prove leaf: %v", err)
 	}
 	if leaf.ReceiptKind != ReceiptKindSuccinct {
-		t.Fatalf("expected succinct leaf receipt, got %s", leaf.ReceiptKind)
+		t.Fatalf("expected succinct receipt, got %s", leaf.ReceiptKind)
 	}
 	imageID, err := hex.DecodeString(leaf.ImageID)
 	if err != nil {
